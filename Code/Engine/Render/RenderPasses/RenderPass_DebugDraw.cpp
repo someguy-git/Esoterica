@@ -31,7 +31,8 @@ namespace EE::Render
     // TODO: Make it configurable!
     static uint32_t const s_gDebugFontResolution = 256;
 
-    static ShaderTypes::DebugDrawCommand_Raw* WriteTexts(
+    static ShaderTypes::DebugDrawCommand_Raw* WriteTexts
+    (
         ShaderTypes::DebugDrawCommand_Raw*          pDstCommand_WriteCombined,
         ShaderTypes::DebugDrawCommand_Raw const*    pDstCommandEnd_WriteCombined,
         TArray<TVector<uint8_t>, 2>&                fontCaches,
@@ -41,16 +42,20 @@ namespace EE::Render
         Float4                                      fontModulateColor,
         Viewport const&                             viewport,
         bool                                        writeBackground,
-        TArrayView<TextCommand const>               textCommands )
+        TArrayView<TextCommand const>               textCommands
+    )
     {
         EE_PROFILE_FUNCTION_RENDER();
 
         Math::ViewVolume const& viewVolume = viewport.GetViewVolume();
 
-        Matrix reverseZ( Vector( 1.0f, 0.0f, 0.0f, 0.0f ),
-                         Vector( 0.0f, 1.0f, 0.0f, 0.0f ),
-                         Vector( 0.0f, 0.0f, -1.0f, 0.0f ),
-                         Vector( 0.0f, 0.0f, 1.0f, 1.0f ) );
+        Matrix reverseZ
+        (
+            Vector( 1.0f, 0.0f, 0.0f, 0.0f ),
+            Vector( 0.0f, 1.0f, 0.0f, 0.0f ),
+            Vector( 0.0f, 0.0f, -1.0f, 0.0f ),
+            Vector( 0.0f, 0.0f, 1.0f, 1.0f )
+        );
 
         Matrix viewProjectionMatrix = viewVolume.GetViewMatrix() * ( viewVolume.GetProjectionMatrix() * reverseZ );
 
@@ -467,6 +472,68 @@ namespace EE::Render
 
     //-------------------------------------------------------------------------
 
+    static bool WriteMeshCommand
+    (
+        ShaderTypes::DebugDrawMeshArgument*&        pDstArguments_WriteCombined,
+        ShaderTypes::DebugDrawMeshArgument const*   pDstArgumentsEnd_WriteCombined,
+        ShaderTypes::DebugDrawMeshParameters*&      pDstParameters_WriteCombined,
+        ShaderTypes::DebugDrawMeshParameters const* pDstParametersEnd_WriteCombined,
+        uint64_t&                                   dstParametersDeviceAddress,
+        DebugMeshRegistry const*                    pDebugMeshRegistry,
+        MeshCommand const&                          meshCommand,
+        RHI::BufferHandle                           renderViewBuffer,
+        uint32_t                                    mainCameraViewIndex,
+        uint64_t                                    pickingResultsBufferHandle,
+        uint32_t                                    pickingSortPriority,
+        uint64_t                                    debugParametersDeviceAddress,
+        uint32_t                                    objectID = ~0U
+    )
+    {
+        DebugMeshRegistry::RegisteredMesh const* pDebugMesh = pDebugMeshRegistry->FindMesh( meshCommand.m_meshID );
+        if ( !pDebugMesh )
+        {
+            EE_LOG_WARNING( LogCategory::Render, "Debug Draw", "No registered debug mesh" );
+            return false;
+        }
+
+        ShaderTypes::DebugDrawMeshRootConstant meshRootConstant = {};
+        meshRootConstant.m_renderViewBuffer = renderViewBuffer;
+        meshRootConstant.m_meshBuffer = RHI::GetBufferHandle( pDebugMesh->m_pMeshBuffer, RHI::DescriptorTypeFlags::Buffer );
+        meshRootConstant.m_mainCameraRenderView = mainCameraViewIndex;
+        meshRootConstant.m_packedColorTint = meshCommand.m_tintColor;
+        meshRootConstant.m_wireframe = meshCommand.m_isWireframe;
+        meshRootConstant.m_fakeLighting = meshCommand.m_useFakeLighting;
+        meshRootConstant.m_pickingSortPriority = pickingSortPriority;
+        meshRootConstant.m_objectID = objectID;
+
+        ShaderTypes::DebugDrawMeshArgument meshArgument = {};
+        meshArgument.m_rootConstant = meshRootConstant;
+        meshArgument.m_rootCBV = debugParametersDeviceAddress;
+        meshArgument.m_rootSRV = dstParametersDeviceAddress;
+        meshArgument.m_dispatchArguments[0] = pDebugMesh->m_numClusters;
+        meshArgument.m_dispatchArguments[1] = 1;
+        meshArgument.m_dispatchArguments[2] = 1;
+
+        ShaderTypes::DebugDrawMeshParameters meshParameters = {};
+        meshParameters.m_hitTestID = meshCommand.m_hitTestID;
+        meshParameters.m_debugDrawPickingResultsBuffer = pickingResultsBufferHandle;
+        memcpy( meshParameters.m_transform, &meshCommand.m_transform, sizeof( Matrix ) );
+
+        memcpy( pDstArguments_WriteCombined, &meshArgument, sizeof( ShaderTypes::DebugDrawMeshArgument ) );
+        memcpy( pDstParameters_WriteCombined, &meshParameters, sizeof( ShaderTypes::DebugDrawMeshParameters ) );
+
+        pDstArguments_WriteCombined++;
+        pDstParameters_WriteCombined++;
+        dstParametersDeviceAddress += sizeof( ShaderTypes::DebugDrawMeshParameters );
+
+        EE_ASSERT( pDstParameters_WriteCombined <= pDstParametersEnd_WriteCombined );
+        EE_ASSERT( pDstArguments_WriteCombined <= pDstArgumentsEnd_WriteCombined );
+
+        return true;
+    }
+
+    //-------------------------------------------------------------------------
+
     void DebugDrawRenderPass::Initialize( RenderPassContext const& context )
     {
         EE_ASSERT( m_pDebugMeshRegistry == nullptr );
@@ -541,6 +608,19 @@ namespace EE::Render
         m_pTransparentDepthOnNoWriteColorPipeline = RHI::CreatePipeline( pContextRHI, transparentDepthOnColorNoWritePipelineParameters );
         m_pTransparentDepthOffPipeline = RHI::CreatePipeline( pContextRHI, transparentDepthOffPipelineParameters );
 
+        RHI::DataFormat outlineColorFormats[] = { RHI::DataFormat::R32_UInt };
+
+        RHI::MeshPipelineParameters outlinePipelineParameters = transparentDepthOnDepthPipelineParameters;
+        outlinePipelineParameters.m_colorFormats = outlineColorFormats;
+        outlinePipelineParameters.m_numRenderTargets = 1;
+        outlinePipelineParameters.m_depthStencilFormat = RHI::DataFormat::D16_UNorm;
+        outlinePipelineParameters.m_blendState.m_writeMasks[0] = 0x0F;
+        outlinePipelineParameters.m_blendState.m_renderTargetMask = RHI::BlendStateTargetFlags::Target0;
+        outlinePipelineParameters.m_pShader = m_pDebugDrawShader->m_pOutlineShader;
+        outlinePipelineParameters.m_debugName = "RenderPass_DebugDraw Pipeline OutlineID R32";
+
+        m_pOutlinePipeline = RHI::CreatePipeline( pContextRHI, outlinePipelineParameters );
+
         //-------------------------------------------------------------------------
 
         RHI::MeshPipelineParameters transparentDepthOnDepthPipelineParameters_Mesh = transparentDepthOnDepthPipelineParameters;
@@ -563,6 +643,17 @@ namespace EE::Render
         m_pTransparentDepthOnColorPipeline_Mesh = RHI::CreatePipeline( pContextRHI, transparentDepthOnColorPipelineParameters_Mesh );
         m_pTransparentDepthOnNoWriteColorPipeline_Mesh = RHI::CreatePipeline( pContextRHI, transparentDepthOnColorNoWritePipelineParameters_Mesh );
         m_pTransparentDepthOffPipeline_Mesh = RHI::CreatePipeline( pContextRHI, transparentDepthOffPipelineParameters_Mesh );
+
+        RHI::MeshPipelineParameters outlinePipelineParameters_Mesh = transparentDepthOnDepthPipelineParameters_Mesh;
+        outlinePipelineParameters_Mesh.m_colorFormats = outlineColorFormats;
+        outlinePipelineParameters_Mesh.m_numRenderTargets = 1;
+        outlinePipelineParameters_Mesh.m_depthStencilFormat = RHI::DataFormat::D16_UNorm;
+        outlinePipelineParameters_Mesh.m_blendState.m_writeMasks[0] = 0x0F;
+        outlinePipelineParameters_Mesh.m_blendState.m_renderTargetMask = RHI::BlendStateTargetFlags::Target0;
+        outlinePipelineParameters_Mesh.m_pShader = m_pDebugDrawMeshShader->m_pOutlineShader;
+        outlinePipelineParameters_Mesh.m_debugName = "RenderPass_DebugDraw Pipeline OutlineID R32 Mesh";
+
+        m_pOutlinePipeline_Mesh = RHI::CreatePipeline( pContextRHI, outlinePipelineParameters_Mesh );
 
         //-------------------------------------------------------------------------
 
@@ -622,11 +713,13 @@ namespace EE::Render
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOnColorPipeline ) );
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOnNoWriteColorPipeline ) );
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOffPipeline ) );
+        RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pOutlinePipeline ) );
 
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOnDepthPipeline_Mesh ) );
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOnColorPipeline_Mesh ) );
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOnNoWriteColorPipeline_Mesh ) );
         RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pTransparentDepthOffPipeline_Mesh ) );
+        RHI::DestroyPipeline( pRenderSystem->GetContextRHI(), eastl::move( m_pOutlinePipeline_Mesh ) );
 
         //-------------------------------------------------------------------------
 
@@ -736,9 +829,9 @@ namespace EE::Render
         uint32_t textureWidth = uint32_t( textureSize.m_x );
         uint32_t textureHeight = uint32_t( textureSize.m_y );
 
-        if ( pRenderViewport->TextureNeedsResize( pRenderViewport->m_DebugDraw_DepthTexture ) )
+        if ( pRenderViewport->TextureNeedsResize( pRenderViewport->m_debugDraw_depthTexture ) )
         {
-            pRenderSystem->QueueResourceDelete( eastl::move( pRenderViewport->m_DebugDraw_DepthTexture ) );
+            pRenderSystem->QueueResourceDelete( eastl::move( pRenderViewport->m_debugDraw_depthTexture ) );
 
             RHI::TextureParameters depthParameters = {};
             depthParameters.m_width = textureWidth;
@@ -747,17 +840,40 @@ namespace EE::Render
             depthParameters.m_descriptorTypes.SetMultipleFlags( RHI::DescriptorTypeFlags::RenderTarget );
             depthParameters.m_debugName.sprintf( "DebugDraw Separate Depth Target %dx%d", textureWidth, textureHeight );
 
-            pRenderViewport->m_DebugDraw_DepthTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthParameters );
+            pRenderViewport->m_debugDraw_depthTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthParameters );
         }
 
         //-------------------------------------------------------------------------
 
-        auto ComputeNumCommands = [] ( CommandBuffer const& commandBuffer )
+        auto ComputeNumCommands = [] ( CommandBuffer const& commandBuffer, uint32_t& numOutlineCommands )
         {
-            uint32_t numCommands = 0;
+            uint32_t numCommands = uint32_t( commandBuffer.m_pointCommands.size() );
             numCommands += uint32_t( commandBuffer.m_lineCommands.size() );
             numCommands += uint32_t( commandBuffer.m_triangleCommands.size() );
-            numCommands += uint32_t( commandBuffer.m_pointCommands.size() );
+
+            for ( PointCommand const& pointCommand : commandBuffer.m_pointCommands )
+            {
+                if ( pointCommand.m_commandFlags & DebugCommandFlagOutline )
+                {
+                    numOutlineCommands++;
+                }
+            }
+
+            for ( LineCommand const& lineCommand : commandBuffer.m_lineCommands )
+            {
+                if ( lineCommand.m_commandFlags & DebugCommandFlagOutline )
+                {
+                    numOutlineCommands++;
+                }
+            }
+
+            for ( TriangleCommand const& triangleCommand : commandBuffer.m_triangleCommands )
+            {
+                if ( triangleCommand.m_commandFlags & DebugCommandFlagOutline )
+                {
+                    numOutlineCommands++;
+                }
+            }
 
             for ( TextCommand const& textCommand : commandBuffer.m_textCommands )
             {
@@ -783,24 +899,44 @@ namespace EE::Render
                     continue;
                 }
 
-                numThreadGroups += uint32_t( pDebugMesh->m_clustersHandle.m_data.size() ); // 1 group per cluster
+                numThreadGroups += uint32_t( pDebugMesh->m_numClusters ); // 1 group per cluster
             }
             return numThreadGroups;
         };
 
-        pRenderViewport->m_numCommands_TransparentDepthOnNoWrite = ComputeNumCommands( m_frameCommandBuffer.m_transparentDepthOnNoWrite );
-        pRenderViewport->m_numCommands_TransparentDepthOnWrite = ComputeNumCommands( m_frameCommandBuffer.m_transparentDepthOnWrite );
-        pRenderViewport->m_numCommands_TransparentDepthSeparateWrite = ComputeNumCommands( m_frameCommandBuffer.m_transparentDepthSeparateWrite );
+        uint32_t numCommands_Outline = 0;
+
+        pRenderViewport->m_numCommands_transparentDepthOnNoWrite = ComputeNumCommands( m_frameCommandBuffer.m_transparentDepthOnNoWrite, numCommands_Outline );
+        pRenderViewport->m_numCommands_transparentDepthOnWrite = ComputeNumCommands( m_frameCommandBuffer.m_transparentDepthOnWrite, numCommands_Outline );
+        pRenderViewport->m_numCommands_transparentDepthSeparateWrite = ComputeNumCommands( m_frameCommandBuffer.m_transparentDepthSeparateWrite, numCommands_Outline );
+        pRenderViewport->m_numCommands_outline = numCommands_Outline;
 
         uint32_t numDebugCommands_Total =
-            pRenderViewport->m_numCommands_TransparentDepthOnNoWrite +
-            pRenderViewport->m_numCommands_TransparentDepthOnWrite +
-            pRenderViewport->m_numCommands_TransparentDepthSeparateWrite;
+            pRenderViewport->m_numCommands_transparentDepthOnNoWrite +
+            pRenderViewport->m_numCommands_transparentDepthOnWrite +
+            pRenderViewport->m_numCommands_transparentDepthSeparateWrite;
+
+        uint32_t numMeshCommands_Outline = 0;
+
+        auto ComputeNumMeshCommands = [&numMeshCommands_Outline] ( CommandBuffer const& commandBuffer )
+        {
+            for ( MeshCommand const& meshCommand : commandBuffer.m_meshCommands )
+            {
+                if ( meshCommand.m_drawOutline )
+                {
+                    numMeshCommands_Outline++;
+                }
+            }
+
+            return uint32_t( commandBuffer.m_meshCommands.size() );
+        };
 
         uint32_t numMeshDebugCommands_Total =
-            uint32_t( m_frameCommandBuffer.m_transparentDepthOnNoWrite.m_meshCommands.size() ) +
-            uint32_t( m_frameCommandBuffer.m_transparentDepthOnWrite.m_meshCommands.size() ) +
-            uint32_t( m_frameCommandBuffer.m_transparentDepthSeparateWrite.m_meshCommands.size() );
+            ComputeNumMeshCommands( m_frameCommandBuffer.m_transparentDepthOnNoWrite ) +
+            ComputeNumMeshCommands( m_frameCommandBuffer.m_transparentDepthOnWrite ) +
+            ComputeNumMeshCommands( m_frameCommandBuffer.m_transparentDepthSeparateWrite );
+
+        pRenderViewport->m_numMeshCommands_outline = numMeshCommands_Outline;
 
         // Shader debug
         //-------------------------------------------------------------------------
@@ -841,6 +977,72 @@ namespace EE::Render
             Math::Max( numDebugCommands_Total, 1U ) * sizeof( ShaderTypes::DebugDrawCommand_Raw ),
             UpdateBuffer_DebugCommands
         );
+
+        auto UpdateBuffer_DebugCommandsOutline = [pContextRHI, frameIndex] ( RHI::Buffer* && pOldBuffer, size_t newBufferSize )
+        {
+            RHI::DestroyBuffer( pContextRHI, eastl::move( pOldBuffer ) );
+
+            RHI::BufferParameters commandsBufferParameters = {};
+            commandsBufferParameters.m_bufferSize = newBufferSize;
+            commandsBufferParameters.m_bufferStride = sizeof( ShaderTypes::DebugDrawCommand_Raw );
+            commandsBufferParameters.m_descriptorTypes.SetMultipleFlags( RHI::DescriptorTypeFlags::Buffer, RHI::DescriptorTypeFlags::Raw );
+            commandsBufferParameters.m_memoryType = RHI::ResourceMemoryType::HostToDevice;
+            commandsBufferParameters.m_debugName.sprintf( "RenderPass_DebugDraw DebugCommandsOutline Buffer %i", frameIndex );
+            commandsBufferParameters.m_flags = RHI::BufferFlags::PersistentMap;
+
+            return RHI::CreateBuffer( pContextRHI, commandsBufferParameters );
+        };
+
+        pRenderViewport->m_debugCommandsBuffersOutline[frameIndex].UpdateDeviceResources
+        (
+            Math::Max( numCommands_Outline, 1U ) * sizeof( ShaderTypes::DebugDrawCommand_Raw ),
+            UpdateBuffer_DebugCommandsOutline
+        );
+
+        if ( numCommands_Outline > 0 )
+        {
+            ShaderTypes::DebugDrawCommand_Raw* pDstCommandsOutline_WriteCombined = reinterpret_cast<ShaderTypes::DebugDrawCommand_Raw*>( pRenderViewport->m_debugCommandsBuffersOutline[frameIndex].m_pBuffer->m_pMappedAddress_WriteCombined );
+            ShaderTypes::DebugDrawCommand_Raw const* pDstCommandsOutlineEnd_WriteCombined = pDstCommandsOutline_WriteCombined + numCommands_Outline;
+
+            auto CopyOutlineCommands = [&pDstCommandsOutline_WriteCombined, pDstCommandsOutlineEnd_WriteCombined] ( CommandBuffer const& commandBuffer )
+            {
+                for ( PointCommand const& pointCommand : commandBuffer.m_pointCommands )
+                {
+                    if ( pointCommand.m_commandFlags & DebugCommandFlagOutline )
+                    {
+                        EE_ASSERT( pDstCommandsOutline_WriteCombined < pDstCommandsOutlineEnd_WriteCombined );
+                        Memory::CopyToWriteCombined( pDstCommandsOutline_WriteCombined, &pointCommand, sizeof( ShaderTypes::DebugDrawPointCommand ) );
+                        pDstCommandsOutline_WriteCombined++;
+                    }
+                }
+
+                for ( LineCommand const& lineCommand : commandBuffer.m_lineCommands )
+                {
+                    if ( lineCommand.m_commandFlags & DebugCommandFlagOutline )
+                    {
+                        EE_ASSERT( pDstCommandsOutline_WriteCombined < pDstCommandsOutlineEnd_WriteCombined );
+                        Memory::CopyToWriteCombined( pDstCommandsOutline_WriteCombined, &lineCommand, sizeof( ShaderTypes::DebugDrawLineCommand ) );
+                        pDstCommandsOutline_WriteCombined++;
+                    }
+                }
+
+                for ( TriangleCommand const& triangleCommand : commandBuffer.m_triangleCommands )
+                {
+                    if ( triangleCommand.m_commandFlags & DebugCommandFlagOutline )
+                    {
+                        EE_ASSERT( pDstCommandsOutline_WriteCombined < pDstCommandsOutlineEnd_WriteCombined );
+                        Memory::CopyToWriteCombined( pDstCommandsOutline_WriteCombined, &triangleCommand, sizeof( ShaderTypes::DebugDrawTriangleCommand ) );
+                        pDstCommandsOutline_WriteCombined++;
+                    }
+                }
+            };
+
+            CopyOutlineCommands( m_frameCommandBuffer.m_transparentDepthOnWrite );
+            CopyOutlineCommands( m_frameCommandBuffer.m_transparentDepthOnNoWrite );
+            CopyOutlineCommands( m_frameCommandBuffer.m_transparentDepthSeparateWrite );
+
+            EE_ASSERT( pDstCommandsOutline_WriteCombined == pDstCommandsOutlineEnd_WriteCombined );
+        }
 
         if ( !pRenderViewport->m_debugParametersBuffers[frameIndex] )
         {
@@ -901,6 +1103,18 @@ namespace EE::Render
             UpdateBuffer_DebugMeshArgument
         );
 
+        pRenderViewport->m_debugMeshParametersBuffersOutline[frameIndex].UpdateDeviceResources
+        (
+            Math::Max( numMeshCommands_Outline, 1U ) * sizeof( ShaderTypes::DebugDrawMeshParameters ),
+            UpdateBuffer_DebugMeshTransform
+        );
+
+        pRenderViewport->m_debugMeshArgumentBuffersOutline[frameIndex].UpdateDeviceResources
+        (
+            Math::Max( numMeshCommands_Outline, 1U ) * sizeof( ShaderTypes::DebugDrawMeshArgument ),
+            UpdateBuffer_DebugMeshArgument
+        );
+
         if ( !pRenderViewport->m_meshArgumentCounterBuffers[frameIndex] )
         {
             RHI::BufferParameters counterBufferParameters = {};
@@ -933,6 +1147,8 @@ namespace EE::Render
         viewVolume.GetViewUpVector().StoreFloat3( debugDrawParameters.m_cameraUpDirection );
         viewVolume.GetViewRightVector().StoreFloat3( debugDrawParameters.m_cameraRightDirection );
 
+        debugDrawParameters.m_objectIDOffset = deviceRenderWorld.GetNumMeshInstanceRootPages() * 64;
+
         Vector mouseClipSpace = pRenderViewport->ScreenSpaceToClipSpace( pRenderViewport->m_lastKnownPickingMousePosition );
         float pickingRadiusClipSpace = float( pRenderViewport->m_lastKnownPickingPixelRadius ) / pRenderViewport->GetDimensions().GetMax();
 
@@ -955,7 +1171,6 @@ namespace EE::Render
     void DebugDrawRenderPass::DrawToViewport( RenderViewport const*     pRenderViewport,
                                               DeviceRenderWorld const&  deviceRenderWorld,
                                               DeviceTextureState&       finalRenderTarget,
-                                              RHI::BufferHandle         clusterBuffer,
                                               RHI::BufferHandle         renderViewBuffer,
                                               uint32_t                  mainCameraViewIndex,
                                               DeviceResourceStates&     resourceStates,
@@ -1011,7 +1226,6 @@ namespace EE::Render
                     this,
                     &fontTextureHandles,
                     frameIndex,
-                    clusterBuffer,
                     renderViewBuffer,
                     mainCameraViewIndex,
                     pRenderViewport,
@@ -1059,49 +1273,24 @@ namespace EE::Render
                 uint32_t numValidMeshCommands = 0;
                 for ( MeshCommand const& meshCommand : commandBuffer.m_meshCommands )
                 {
-                    DebugMeshRegistry::RegisteredMesh const* pDebugMesh = m_pDebugMeshRegistry->FindMesh( meshCommand.m_meshID );
-                    if ( !pDebugMesh )
+                    bool validMesh = WriteMeshCommand
+                    (
+                        pDstMeshArguments_WriteCombined, pDstMeshArgumentsEnd_WriteCombined,
+                        pDstMeshParameters_WriteCombined, pDstMeshParametersEnd_WriteCombined,
+                        dstParametersDeviceAddress,
+                        m_pDebugMeshRegistry,
+                        meshCommand,
+                        renderViewBuffer,
+                        mainCameraViewIndex,
+                        pRenderViewport->m_debugDrawPickingResultsBuffer.GetAppendBufferHandle(),
+                        m_depthBuckets[dstBucketIndex].m_pickingSortPriority,
+                        pRenderViewport->m_debugParametersBuffers[frameIndex]->m_deviceAddress
+                    );
+
+                    if ( validMesh )
                     {
-                        EE_LOG_WARNING( LogCategory::Render, "Debug Draw", "No registered debug mesh" );
-                        continue;
+                        numValidMeshCommands++;
                     }
-
-                    ShaderTypes::DebugDrawMeshRootConstant meshRootConstant = {};
-                    meshRootConstant.m_renderViewBuffer = renderViewBuffer;
-                    meshRootConstant.m_clusterBuffer = clusterBuffer;
-                    meshRootConstant.m_clusterVertexBuffer = RHI::GetBufferHandle( pDebugMesh->m_pClusterVertexBuffer, RHI::DescriptorTypeFlags::Buffer );
-                    meshRootConstant.m_clusterTriangleBuffer = RHI::GetBufferHandle( pDebugMesh->m_pClusterTriangleBuffer, RHI::DescriptorTypeFlags::Buffer );
-                    meshRootConstant.m_mainCameraRenderView = mainCameraViewIndex;
-                    meshRootConstant.m_packedColorTint = meshCommand.m_tintColor;
-                    meshRootConstant.m_wireframe = meshCommand.m_isWireframe;
-                    meshRootConstant.m_fakeLighting = meshCommand.m_useFakeLighting;
-                    meshRootConstant.m_clusterOffset = uint32_t( pDebugMesh->m_clustersHandle.m_handle.m_offset );
-                    meshRootConstant.m_pickingSortPriority = m_depthBuckets[dstBucketIndex].m_pickingSortPriority;
-
-                    ShaderTypes::DebugDrawMeshArgument meshArgument = {};
-                    meshArgument.m_rootConstant = meshRootConstant;
-                    meshArgument.m_rootCBV = pRenderViewport->m_debugParametersBuffers[frameIndex]->m_deviceAddress;
-                    meshArgument.m_rootSRV = dstParametersDeviceAddress;
-                    meshArgument.m_dispatchArguments[0] = uint32_t( pDebugMesh->m_clustersHandle.m_data.size() );
-                    meshArgument.m_dispatchArguments[1] = 1;
-                    meshArgument.m_dispatchArguments[2] = 1;
-
-                    ShaderTypes::DebugDrawMeshParameters meshParameters = {};
-                    meshParameters.m_hitTestID = meshCommand.m_hitTestID;
-                    meshParameters.m_debugDrawPickingResultsBuffer = pRenderViewport->m_debugDrawPickingResultsBuffer.GetAppendBufferHandle();
-                    memcpy( meshParameters.m_transform, &meshCommand.m_transform, sizeof( Matrix ) );
-
-                    memcpy( pDstMeshArguments_WriteCombined, &meshArgument, sizeof( ShaderTypes::DebugDrawMeshArgument ) );
-                    memcpy( pDstMeshParameters_WriteCombined, &meshParameters, sizeof( ShaderTypes::DebugDrawMeshParameters ) );
-
-                    pDstMeshArguments_WriteCombined++;
-                    pDstMeshParameters_WriteCombined++;
-                    dstParametersDeviceAddress += sizeof( ShaderTypes::DebugDrawMeshParameters );
-
-                    EE_ASSERT( pDstMeshParameters_WriteCombined <= pDstMeshParametersEnd_WriteCombined );
-                    EE_ASSERT( pDstMeshArguments_WriteCombined <= pDstMeshArgumentsEnd_WriteCombined );
-
-                    numValidMeshCommands++;
                 }
 
                 *pDstMeshArgumentCounter_WriteCombined = numValidMeshCommands;
@@ -1315,19 +1504,19 @@ namespace EE::Render
 
         RHI::LoadAction debugDrawLoadAction_Clear = debugDrawLoadAction_Load;
         debugDrawLoadAction_Clear.m_loadActionDepth = RHI::LoadActionType::Clear;
-        debugDrawLoadAction_Clear.m_depthClearValue = pRenderViewport->m_DebugDraw_DepthTexture->m_clearValue;
+        debugDrawLoadAction_Clear.m_depthClearValue = pRenderViewport->m_debugDraw_depthTexture->m_clearValue;
 
         // Regular depth test with depth writes
         EE_ASSERT( !resourceStates.HasPendingBarriers() );
         resourceStates.Writeable( pRenderViewport->m_finalTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
-        resourceStates.Writeable( pRenderViewport->m_ForwardShading_DepthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
+        resourceStates.Writeable( pRenderViewport->m_forwardShading_depthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
         resourceStates.FlushBarriers( pCommandBuffer );
 
-        RHI::CmdSetRenderTargets( pCommandBuffer, { &finalRenderTarget.m_pTexture, 1 }, pRenderViewport->m_ForwardShading_DepthTexture, &debugDrawLoadAction_Load );
+        RHI::CmdSetRenderTargets( pCommandBuffer, { &finalRenderTarget.m_pTexture, 1 }, pRenderViewport->m_forwardShading_depthTexture, &debugDrawLoadAction_Load );
         DrawDebugCommands_DepthOnWrite
         (
             "Depth=On Write=Yes",
-            pRenderViewport->m_numCommands_TransparentDepthOnWrite,
+            pRenderViewport->m_numCommands_transparentDepthOnWrite,
             numValidMeshCommandsPerBucket[DEPTH_TEST_ON_WRITE],
             m_depthBuckets[DEPTH_TEST_ON_WRITE],
             meshCommandsOffset, meshCounterOffset
@@ -1336,14 +1525,14 @@ namespace EE::Render
         // Regular depth test without depth writes
         EE_ASSERT( !resourceStates.HasPendingBarriers() );
         resourceStates.Writeable( pRenderViewport->m_finalTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
-        resourceStates.Writeable( pRenderViewport->m_ForwardShading_DepthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthRead, RHI::TextureState::DepthRead );
+        resourceStates.Writeable( pRenderViewport->m_forwardShading_depthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthRead, RHI::TextureState::DepthRead );
         resourceStates.FlushBarriers( pCommandBuffer );
 
-        RHI::CmdSetRenderTargets( pCommandBuffer, { &finalRenderTarget.m_pTexture, 1 }, pRenderViewport->m_ForwardShading_DepthTexture, &debugDrawLoadAction_Load );
+        RHI::CmdSetRenderTargets( pCommandBuffer, { &finalRenderTarget.m_pTexture, 1 }, pRenderViewport->m_forwardShading_depthTexture, &debugDrawLoadAction_Load );
         DrawDebugCommands_DepthOnNoWrite
         (
             "Depth=On Write=NO",
-            pRenderViewport->m_numCommands_TransparentDepthOnNoWrite,
+            pRenderViewport->m_numCommands_transparentDepthOnNoWrite,
             numValidMeshCommandsPerBucket[DEPTH_TEST_ON],
             m_depthBuckets[DEPTH_TEST_ON],
             meshCommandsOffset, meshCounterOffset
@@ -1352,14 +1541,14 @@ namespace EE::Render
         // Depth test only with other debug draws and with depth writes
         EE_ASSERT( !resourceStates.HasPendingBarriers() );
         resourceStates.Writeable( pRenderViewport->m_finalTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
-        resourceStates.Writeable( pRenderViewport->m_DebugDraw_DepthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
+        resourceStates.Writeable( pRenderViewport->m_debugDraw_depthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
         resourceStates.FlushBarriers( pCommandBuffer );
 
-        RHI::CmdSetRenderTargets( pCommandBuffer, { &finalRenderTarget.m_pTexture, 1 }, pRenderViewport->m_DebugDraw_DepthTexture, &debugDrawLoadAction_Clear );
+        RHI::CmdSetRenderTargets( pCommandBuffer, { &finalRenderTarget.m_pTexture, 1 }, pRenderViewport->m_debugDraw_depthTexture, &debugDrawLoadAction_Clear );
         DrawDebugCommands_DepthOnWrite
         (
             "Depth=Separate Write=Yes",
-            pRenderViewport->m_numCommands_TransparentDepthSeparateWrite,
+            pRenderViewport->m_numCommands_transparentDepthSeparateWrite,
             numValidMeshCommandsPerBucket[DEPTH_TEST_SEPARATE_WRITE],
             m_depthBuckets[DEPTH_TEST_SEPARATE_WRITE],
             meshCommandsOffset, meshCounterOffset
@@ -1375,6 +1564,128 @@ namespace EE::Render
             commandsBuffer.CopyResults( pCommandBuffer, frameIndex );
             commandsBuffer.Barrier( pCommandBuffer, frameIndex );
         } );
+    }
+
+    void DebugDrawRenderPass::DrawOutlineToViewport
+    (
+        RenderViewport const*   pRenderViewport,
+        RHI::BufferHandle       renderViewBuffer,
+        uint32_t                mainCameraViewIndex,
+        uint32_t                objectIDOffset,
+        DeviceResourceStates&   resourceStates,
+        RHI::CommandBuffer*     pCommandBuffer,
+        uint32_t                frameIndex
+    )
+    {
+        EE_PROFILE_FUNCTION_RENDER();
+
+        uint32_t const numCommands = pRenderViewport->m_numCommands_outline;
+        uint32_t const numMeshCommands = pRenderViewport->m_numMeshCommands_outline;
+        if ( numCommands == 0 && numMeshCommands == 0 )
+        {
+            return;
+        }
+
+        EE_RHI_COMMAND_BUFFER_PROFILE_SCOPE( pCommandBuffer, "Debug Draw Outline Object ID Pass" );
+
+        RHI::Texture* pDepthTexture = pRenderViewport->m_editorOutline_depthTexture;
+
+        Float2 const viewSize = Float2( float( pDepthTexture->m_width ), float( pDepthTexture->m_height ) );
+
+        //-------------------------------------------------------------------------
+
+        uint32_t numValidMeshCommands = 0;
+
+        if ( numMeshCommands > 0 )
+        {
+            ShaderTypes::DebugDrawMeshArgument* pDstMeshArguments_WriteCombined = reinterpret_cast<ShaderTypes::DebugDrawMeshArgument*>( pRenderViewport->m_debugMeshArgumentBuffersOutline[frameIndex].m_pBuffer->m_pMappedAddress_WriteCombined );
+            ShaderTypes::DebugDrawMeshParameters* pDstMeshParameters_WriteCombined = reinterpret_cast<ShaderTypes::DebugDrawMeshParameters*>( pRenderViewport->m_debugMeshParametersBuffersOutline[frameIndex].m_pBuffer->m_pMappedAddress_WriteCombined );
+
+            ShaderTypes::DebugDrawMeshArgument const* pDstMeshArgumentsEnd_WriteCombined = pDstMeshArguments_WriteCombined + ( pRenderViewport->m_debugMeshArgumentBuffersOutline[frameIndex].m_pBuffer->m_size / pRenderViewport->m_debugMeshArgumentBuffersOutline[frameIndex].m_pBuffer->m_stride );
+            ShaderTypes::DebugDrawMeshParameters const* pDstMeshParametersEnd_WriteCombined = pDstMeshParameters_WriteCombined + ( pRenderViewport->m_debugMeshParametersBuffersOutline[frameIndex].m_pBuffer->m_size / pRenderViewport->m_debugMeshParametersBuffersOutline[frameIndex].m_pBuffer->m_stride );
+
+            uint64_t dstParametersDeviceAddress = pRenderViewport->m_debugMeshParametersBuffersOutline[frameIndex].m_pBuffer->m_deviceAddress;
+
+            auto WriteOutlineMeshCommands = [&] ( CommandBuffer const& commandBuffer )
+            {
+                for ( MeshCommand const& meshCommand : commandBuffer.m_meshCommands )
+                {
+                    if ( !meshCommand.m_drawOutline )
+                    {
+                        continue;
+                    }
+
+                    bool validMesh = WriteMeshCommand
+                    (
+                         pDstMeshArguments_WriteCombined, pDstMeshArgumentsEnd_WriteCombined,
+                         pDstMeshParameters_WriteCombined, pDstMeshParametersEnd_WriteCombined,
+                         dstParametersDeviceAddress,
+                         m_pDebugMeshRegistry,
+                         meshCommand,
+                         renderViewBuffer,
+                         mainCameraViewIndex,
+                         pRenderViewport->m_debugDrawPickingResultsBuffer.GetAppendBufferHandle(),
+                         m_depthBuckets[DEPTH_TEST_ON_WRITE].m_pickingSortPriority,
+                         pRenderViewport->m_debugParametersBuffers[frameIndex]->m_deviceAddress,
+                         objectIDOffset + numValidMeshCommands
+                    );
+
+                    if ( validMesh )
+                    {
+                        numValidMeshCommands++;
+                    }
+                }
+            };
+
+            WriteOutlineMeshCommands( m_frameCommandBuffer.m_transparentDepthOnWrite );
+            WriteOutlineMeshCommands( m_frameCommandBuffer.m_transparentDepthOnNoWrite );
+            WriteOutlineMeshCommands( m_frameCommandBuffer.m_transparentDepthSeparateWrite );
+        }
+
+        //-------------------------------------------------------------------------
+
+        {
+            RHI::LoadAction idLoadAction = {};
+            idLoadAction.m_loadActionsColor[0] = RHI::LoadActionType::Load;
+            idLoadAction.m_loadActionDepth = RHI::LoadActionType::Clear;
+
+            EE_ASSERT( !resourceStates.HasPendingBarriers() );
+            resourceStates.Writeable( pRenderViewport->m_editorOutline_idTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+            resourceStates.Writeable( pRenderViewport->m_editorOutline_depthTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
+            resourceStates.FlushBarriers( pCommandBuffer );
+
+            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_editorOutline_idTexture.m_pTexture, 1 }, pDepthTexture, &idLoadAction );
+            RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, viewSize.m_x, viewSize.m_y, 0.0F, 1.0F );
+            RHI::CmdSetScissor( pCommandBuffer, 0, 0, uint32_t( viewSize.m_x ), uint32_t( viewSize.m_y ) );
+
+            if ( numCommands > 0 )
+            {
+                ShaderTypes::DebugDrawResourceTableData debugDrawRootConstant = {};
+                debugDrawRootConstant.SetDebugDrawCommandsBuffer( RHI::GetBufferHandle( pRenderViewport->m_debugCommandsBuffersOutline[frameIndex].m_pBuffer, RHI::DescriptorTypeFlags::Buffer ) );
+                debugDrawRootConstant.SetRenderViewBuffer( renderViewBuffer );
+                debugDrawRootConstant.SetPickingResultsBuffer( pRenderViewport->m_debugDrawPickingResultsBuffer.GetAppendBufferHandle() );
+                debugDrawRootConstant.m_mainCameraRenderView = mainCameraViewIndex;
+                debugDrawRootConstant.m_commandsOffset = 0;
+                debugDrawRootConstant.m_numDebugDrawCommands = numCommands;
+                debugDrawRootConstant.m_pickingSortPriority = m_depthBuckets[DEPTH_TEST_ON_WRITE].m_pickingSortPriority;
+
+                RHI::CmdSetPipeline( pCommandBuffer, m_pOutlinePipeline );
+                RHI::CmdSetRootConstants( pCommandBuffer, 0, &debugDrawRootConstant, sizeof( debugDrawRootConstant ) );
+                RHI::CmdSetRootParameter( pCommandBuffer, 1, pRenderViewport->m_debugParametersBuffers[frameIndex], 0 );
+
+                RHI::CmdDispatchMesh( pCommandBuffer, ( numCommands + 63 ) / 64, 1, 1 );
+            }
+
+            if ( numValidMeshCommands > 0 )
+            {
+                RHI::CmdSetPipeline( pCommandBuffer, m_pOutlinePipeline_Mesh );
+                RHI::CmdExecuteIndirect
+                (
+                    pCommandBuffer, m_pDebugDrawMeshShader->m_pCommandSignatureMeshDispatch, numValidMeshCommands,
+                    pRenderViewport->m_debugMeshArgumentBuffersOutline[frameIndex].m_pBuffer, 0, nullptr, 0
+                );
+            }
+        }
     }
 }
 #endif

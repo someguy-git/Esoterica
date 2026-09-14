@@ -1,5 +1,6 @@
 #pragma once
 #include "Base/Render/PageAllocator.h"
+#include "Base/Types/Arrays.h"
 #include "Base/Types/Color.h"
 #include "EASTL/atomic.h"
 
@@ -13,12 +14,12 @@ namespace EE
 
 namespace EE::Render
 {
+    class Material;
+
     namespace ShaderTypes
     {
         struct Transform;
         struct SkinningTransform;
-        struct Mesh;
-        struct MeshCluster;
         struct DirectionalLightUpdateCommand;
         struct PointLightUpdateCommand;
         struct SpotLightUpdateCommand;
@@ -31,16 +32,13 @@ namespace EE::Render
 
     using Buffer32ByteBlock = uint32_t[8];
 
-    using MeshHandle = PageAllocator<ShaderTypes::Mesh, uint16_t>::Handle;
-    using ClustersHandle = PageAllocator<ShaderTypes::MeshCluster, uint32_t>::Handle;
     using ShaderDataHandle = PageAllocator<Buffer32ByteBlock, uint32_t>::Handle;
 
     //-------------------------------------------------------------------------
 
-    struct MeshInstanceProxy final
+    struct MeshInstanceRootProxy final
     {
         void WriteRootTransform( Transform const& worldTransform, Float3 worldNonUniformScale, Float3 worldAABBCenter, Float3 worldAABBHalfExtents );
-        void WriteLocalTransforms( TArrayView<Matrix43 const> localTransforms );
 
         inline bool IsValid() const { return m_instanceHandle.IsValid(); }
 
@@ -48,12 +46,36 @@ namespace EE::Render
 
         eastl::atomic<uint32_t>*                                                m_pTransformUpdateCounter = nullptr;
         uint64_t const*                                                         m_pTransformUpdateSequence = nullptr;
-        ShaderTypes::MeshInstanceRootUpdateCommand*                             m_pDstRootUpdateCommands = nullptr; // TODO: Need a workaround for platforms that don't support virtual memory. Can use PageAllocator<T> handle for that.
-        ShaderTypes::MeshInstanceTransformUpdateCommand*                        m_pDstTransformUpdateCommands = nullptr; // TODO: Need a workaround for platforms that don't support virtual memory. Can use PageAllocator<T> handle for that.
+        ShaderTypes::MeshInstanceRootUpdateCommand*                             m_pDstUpdateCommands = nullptr; // TODO: Need a workaround for platforms that don't support virtual memory. Can use PageAllocator<T> handle for that.
 
         uint64_t                                                                m_dstTransformUpdateSequence = ~0ULL;
         uint32_t                                                                m_dstTransformUpdateIndex = ~0U;
         HandleAllocator<uint32_t>::Handle                                       m_instanceHandle = {};
+    };
+
+    //-------------------------------------------------------------------------
+
+    struct MeshInstanceProxy final
+    {
+        void StartLocalTransformWrite();
+        void WriteLocalTransform( Matrix43 const& localTransform );
+        void SubmitLocalTransformWrite() const;
+
+        inline bool IsValid() const { return m_instanceHandle.IsValid(); }
+
+        //-------------------------------------------------------------------------
+
+        eastl::atomic<uint32_t>*                                                m_pTransformUpdateCounter = nullptr;
+        uint64_t const*                                                         m_pTransformUpdateSequence = nullptr;
+        ShaderTypes::MeshInstanceTransformUpdateCommand*                        m_pDstTransformUpdateCommands = nullptr; // TODO: Need a workaround for platforms that don't support virtual memory. Can use PageAllocator<T> handle for that.
+
+        uint64_t                                                                m_dstTransformUpdateSequence = ~0ULL;
+        uint32_t                                                                m_dstTransformUpdateIndex = ~0U;
+        uint32_t                                                                m_numWrittenLocalTransforms = 0; // Write cursor for the reserved local transform range
+        HandleAllocator<uint32_t>::Handle                                       m_instanceHandle = {};
+
+        uint32_t                                                                m_shaderIndex = ~0U;
+        HandleAllocator<uint32_t>::Handle                                       m_clusterHandle = {};
     };
 
     //-------------------------------------------------------------------------

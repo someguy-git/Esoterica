@@ -12,6 +12,7 @@
 #include "Engine/Render/RenderPasses/RenderPass_CascadedShadow.h"
 #include "Engine/Render/RenderPasses/RenderPass_DepthDownsample.h"
 #include "Engine/Render/RenderPasses/RenderPass_DebugDraw.h"
+#include "Engine/Render/RenderPasses/RenderPass_EditorOutline.h"
 
 namespace EE
 {
@@ -27,6 +28,24 @@ namespace EE::Render
     class RenderWorldSystem;
     class RenderWorldSettings;
     class RenderSettings;
+
+    //-------------------------------------------------------------------------
+
+    struct ShaderCullingBucket
+    {
+        DeviceResizeBuffer                                                  m_instanceVisibilityBuffer = {};
+        DeviceResizeBuffer                                                  m_clusterCullingWorkBuffer = {};
+        DeviceResizeBuffer                                                  m_cullingArgumentBuffer = {};
+        DeviceResizeBuffer                                                  m_drawCompactionArgumentBuffer = {};
+        DeviceResizeBuffer                                                  m_drawClusterBuffer = {};
+        RHI::Buffer*                                                        m_pCullingCounterBuffer = nullptr;
+        RHI::Buffer*                                                        m_pDrawClusterCountersBuffer = nullptr;
+        RHI::Buffer*                                                        m_pDrawClusterScatterOffsetsBuffer = nullptr;
+        RHI::Buffer*                                                        m_pDrawClusterBaseOffsetsBuffer = nullptr;
+
+        void Initialize( RHI::Context* pContextRHI, const char* shaderName );
+        void Shutdown( RHI::Context* pContextRHI );
+    };
 
     //-------------------------------------------------------------------------
 
@@ -47,6 +66,7 @@ namespace EE::Render
     private:
 
         //-------------------------------------------------------------------------
+
         uint64_t SubmitGraphicsCommandBuffer( RHI::CommandBuffer*&& pCommandBuffer );
         uint64_t SubmitComputeCommandBuffer( RHI::CommandBuffer*&& pCommandBuffer );
 
@@ -55,7 +75,7 @@ namespace EE::Render
         //-------------------------------------------------------------------------
 
         template <typename F>
-        void ForEachRenderBucket( uint32_t numCascadedShadowPasses, F fn );
+        void ForEachRenderBucket( uint32_t numCascadedShadowPasses, bool includeEditorOutline, F fn );
 
         template <typename F>
         void ForEachRenderPass( F fn );
@@ -69,18 +89,15 @@ namespace EE::Render
         RenderSettings const*                                               m_pRenderGlobalSettings = nullptr;
 
         TVector<ForwardShadingMaterialShaderPipelineBucket>                 m_materialShaderPipelineBuckets;
+        TVector<ShaderCullingBucket>                                        m_shaderCullingBuckets;
 
         ComputeShader const*                                                m_pInstanceCullingShader = nullptr;
-        ComputeShader const*                                                m_pClusterCompactionShader = nullptr;
+        ComputeShader const*                                                m_pCullingCompactionShader = nullptr;
+        ComputeShader const*                                                m_pCullingArgumentGenerationShader = nullptr;
+        ComputeShader const*                                                m_pDrawCompactionShader = nullptr;
         ComputeShader const*                                                m_pClusterCullingShader = nullptr;
+        ComputeShader const*                                                m_pDrawArgumentGenerationShader = nullptr;
         ComputeShader const*                                                m_pLightCulling_CullLightsShader = nullptr;
-
-        DeviceResizeBuffer                                                  m_ClusterCulling_ArgumentBuffer = {};
-        RHI::Buffer*                                                        m_pClusterCulling_CounterBuffer = nullptr;
-
-        DeviceResizeBuffer                                                  m_ClusterCompaction_ArgumentBuffer = {};
-
-        DeviceResizeBuffer                                                  m_ClusterRecordCountersBuffer = {};
 
         DeviceSpatialHash                                                   m_LightCulling_SpatialHash;
 
@@ -100,7 +117,8 @@ namespace EE::Render
         #if EE_DEVELOPMENT_TOOLS
         ComputeShader const*                                                m_pInstancePickingResolveShader = nullptr;
 
-        DebugDrawRenderPass                                                 m_debugDrawPass;
+        DebugDrawRenderPass                                                 m_renderPass_DebugDraw;
+        EditorOutlineRenderPass                                             m_renderPass_EditorOutline;
         #endif
     };
 }

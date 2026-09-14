@@ -38,13 +38,13 @@ namespace EE::Resource
             m_status = RequestStatus::Failed;
         }
 
-        // Update filepaths
+        // Update file paths
         m_sourceFile = m_resourceID.GetFileSystemPath( context.GetSourceDataDirectory() );
 
         // Set the destination path based on request type
-        if ( m_origin == RequestOrigin::Package )
+        if ( m_origin == RequestOrigin::Publish )
         {
-            m_destinationFile = m_resourceID.GetCompiledFileSystemPath( context.GetPackagedDataDirectory() );
+            m_destinationFile = m_resourceID.GetCompiledFileSystemPath( context.GetShippingDataDirectory() );
         }
         else
         {

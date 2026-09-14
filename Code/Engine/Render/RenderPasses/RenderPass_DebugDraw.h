@@ -38,15 +38,28 @@ namespace EE::Render
 
         void ClearBuffers( RHI::CommandBuffer* pCommandBuffer, uint32_t frameIndex );
 
-        void DrawToViewport( RenderViewport const*          pRenderViewport,
-                             DeviceRenderWorld const&       deviceRenderWorld,
-                             DeviceTextureState&            finalRenderTarget,
-                             RHI::BufferHandle              clusterBuffer,
-                             RHI::BufferHandle              renderViewBuffer,
-                             uint32_t                       mainCameraViewIndex,
-                             DeviceResourceStates&          resourceStates,
-                             RHI::CommandBuffer*            pCommandBuffer,
-                             uint32_t                       frameIndex );
+        void DrawToViewport
+        (
+            RenderViewport const*          pRenderViewport,
+            DeviceRenderWorld const&       deviceRenderWorld,
+            DeviceTextureState&            finalRenderTarget,
+            RHI::BufferHandle              renderViewBuffer,
+            uint32_t                       mainCameraViewIndex,
+            DeviceResourceStates&          resourceStates,
+            RHI::CommandBuffer*            pCommandBuffer,
+            uint32_t                       frameIndex
+        );
+
+        void DrawOutlineToViewport
+        (
+            RenderViewport const*          pRenderViewport,
+            RHI::BufferHandle              renderViewBuffer,
+            uint32_t                       mainCameraViewIndex,
+            uint32_t                       objectIDOffset,
+            DeviceResourceStates&          resourceStates,
+            RHI::CommandBuffer*            pCommandBuffer,
+            uint32_t                       frameIndex
+        );
 
         template <typename F>
         inline void ForEachBucket( F fn )
@@ -110,6 +123,9 @@ namespace EE::Render
         RHI::Pipeline*                                  m_pTransparentDepthOnColorPipeline_Mesh = nullptr;
         RHI::Pipeline*                                  m_pTransparentDepthOnNoWriteColorPipeline_Mesh = nullptr;
         RHI::Pipeline*                                  m_pTransparentDepthOffPipeline_Mesh = nullptr;
+
+        RHI::Pipeline*                                  m_pOutlinePipeline = nullptr;
+        RHI::Pipeline*                                  m_pOutlinePipeline_Mesh = nullptr;
 
         TArray<RHI::Texture*, 2>                        m_fontCacheTextures = {};
         TArray<TVector<uint8_t>, 2>                     m_fontCaches = {};

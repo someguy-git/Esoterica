@@ -97,7 +97,7 @@ namespace EE
         TaskSystem*                                     m_pTaskSystem = nullptr;
         TypeSystem::TypeRegistry*                       m_pTypeRegistry = nullptr;
         Resource::ResourceSystem*                       m_pResourceSystem = nullptr;
-        Resource::ResourceProvider*                     m_pResourceProvider = nullptr;
+        Resource::IResourceProvider*                    m_pResourceProvider = nullptr;
         Render::RenderSystem*                           m_pRenderSystem = nullptr;
         Render::Window*                                 m_pRenderWindow = nullptr;
         Render::ForwardShadingRenderer*                 m_pForwardShadingRenderer = nullptr;

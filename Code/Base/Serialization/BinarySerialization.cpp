@@ -107,6 +107,15 @@ namespace EE::Serialization
         mpack_done_bin( m_pReader );
     }
 
+    void BinaryReader::ReadValue( AlignedBlob& blob )
+    {
+        size_t const expectedSize = mpack_expect_bin( m_pReader );
+        blob.resize( expectedSize );
+
+        mpack_read_bytes( m_pReader, (char*) blob.data(), expectedSize );
+        mpack_done_bin( m_pReader );
+    }
+
     void BinaryReader::ReadValue( String& v )
     {
         if ( mpack_peek_tag( m_pReader ).type == mpack_type_nil )
@@ -269,6 +278,12 @@ namespace EE::Serialization
     }
 
     void BinaryWriter::WriteValue( Blob const& blob )
+    {
+        EE_ASSERT( !blob.empty() );
+        mpack_write_bin( m_pWriter, (char*) blob.data(), (uint32_t) blob.size() );
+    }
+
+    void BinaryWriter::WriteValue( AlignedBlob const& blob )
     {
         EE_ASSERT( !blob.empty() );
         mpack_write_bin( m_pWriter, (char*) blob.data(), (uint32_t) blob.size() );

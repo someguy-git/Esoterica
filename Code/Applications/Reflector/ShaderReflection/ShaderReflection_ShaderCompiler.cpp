@@ -235,6 +235,27 @@ namespace EE::Reflection
 
         shader.m_shaderStageToolMetadata.emplace_back( "PS_main", "PS", "PERMUTATION_DEFAULT;PERMUTATION_ALPHA_TEST;" );
 
+        #if EE_DEVELOPMENT_TOOLS
+
+        // PS OutlineID
+        //-------------------------------------------------------------------------
+
+        TInlineVector<wchar_t const*, 20> argumentsPS_OutlineID =
+        {
+            COMMON_DXC_ARGUMENTS( shaderFilename, shaderDir, m_codeDirectoryPath ),
+            DXC_ARG_ENTRY_POINT( L"PS_main_OutlineID" ),
+            DXC_ARG_TARGET( L"ps_6_6" )
+        };
+
+        if ( !CompileShaderStage( shader, "PS_OutlineID", compiler, includeHandler, argumentsPS_OutlineID ) )
+        {
+            return false;
+        }
+
+        shader.m_shaderStageToolMetadata.emplace_back( "PS_main_OutlineID", "PS", "" );
+
+        #endif
+
         return true;
     }
 
@@ -310,6 +331,30 @@ namespace EE::Reflection
         }
 
         shader.m_shaderStageToolMetadata.emplace_back( "PS_main", "PS", "" );
+
+        #if EE_DEVELOPMENT_TOOLS
+
+        // Outline ID pixel shader
+        //-------------------------------------------------------------------------
+
+        if ( shader.m_useOutlineIDPixelShader )
+        {
+            TInlineVector<wchar_t const*, 20> argumentsPS_OutlineID =
+            {
+                COMMON_DXC_ARGUMENTS( shaderFilename, shaderDir, m_codeDirectoryPath ),
+                DXC_ARG_ENTRY_POINT( L"PS_main_OutlineID" ),
+                DXC_ARG_TARGET( L"ps_6_6" )
+            };
+
+            if ( !CompileShaderStage( shader, "PS_OutlineID", compiler, includeHandler, argumentsPS_OutlineID ) )
+            {
+                return false;
+            }
+
+            shader.m_shaderStageToolMetadata.emplace_back( "PS_main_OutlineID", "PS", "" );
+        }
+
+        #endif
 
         return true;
     }

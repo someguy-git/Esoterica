@@ -29,19 +29,16 @@
     <ClCompile Include="Render\RenderGeometryBuilder.cpp">
       <Filter>Render</Filter>
     </ClCompile>
-    <ClCompile Include="Render\RenderProxies.cpp">
+    <ClCompile Include="Render\RenderMesh.cpp">
       <Filter>Render</Filter>
     </ClCompile>
-    <ClCompile Include="Render\RenderMaterialShaderClusterCapacity.cpp">
+    <ClCompile Include="Render\RenderProxies.cpp">
       <Filter>Render</Filter>
     </ClCompile>
     <ClCompile Include="Render\Renderer_ForwardShading.cpp">
       <Filter>Render</Filter>
     </ClCompile>
     <ClCompile Include="Render\RenderViewport.cpp">
-      <Filter>Render</Filter>
-    </ClCompile>
-    <ClCompile Include="Render\RenderMesh.cpp">
       <Filter>Render</Filter>
     </ClCompile>
     <ClCompile Include="Render\RenderSystem.cpp">
@@ -105,6 +102,9 @@
       <Filter>Render\RenderPasses</Filter>
     </ClCompile>
     <ClCompile Include="Render\RenderPasses\RenderPass_DepthDownsample.cpp">
+      <Filter>Render\RenderPasses</Filter>
+    </ClCompile>
+    <ClCompile Include="Render\RenderPasses\RenderPass_EditorOutline.cpp">
       <Filter>Render\RenderPasses</Filter>
     </ClCompile>
     <ClCompile Include="Render\RenderPasses\RenderPass_ForwardShading.cpp">
@@ -751,7 +751,7 @@
     <ClInclude Include="Render\RenderGeometryBuilder.h">
       <Filter>Render</Filter>
     </ClInclude>
-    <ClInclude Include="Render\RenderMaterialShaderClusterCapacity.h">
+    <ClInclude Include="Render\RenderMesh.h">
       <Filter>Render</Filter>
     </ClInclude>
     <ClInclude Include="Render\RenderViewLayer.h">
@@ -836,6 +836,9 @@
       <Filter>Render\Components</Filter>
     </ClInclude>
     <ClInclude Include="Render\RenderPasses\RenderPass_DepthDownsample.h">
+      <Filter>Render\RenderPasses</Filter>
+    </ClInclude>
+    <ClInclude Include="Render\RenderPasses\RenderPass_EditorOutline.h">
       <Filter>Render\RenderPasses</Filter>
     </ClInclude>
     <ClInclude Include="Render\RenderPasses\RenderPass.h">
@@ -1512,6 +1515,18 @@
     <None Include="Render\Shaders\Downsample.esf">
       <Filter>Render\Shaders</Filter>
     </None>
+    <None Include="Render\Shaders\EditorOutline\EditorOutline_Common.esh">
+      <Filter>Render\Shaders\EditorOutline</Filter>
+    </None>
+    <None Include="Render\Shaders\EditorOutline\EditorOutline_Composite.esf">
+      <Filter>Render\Shaders\EditorOutline</Filter>
+    </None>
+    <None Include="Render\Shaders\EditorOutline\EditorOutline_Initialize.esf">
+      <Filter>Render\Shaders\EditorOutline</Filter>
+    </None>
+    <None Include="Render\Shaders\EditorOutline\EditorOutline_JumpFlood.esf">
+      <Filter>Render\Shaders\EditorOutline</Filter>
+    </None>
     <None Include="Render\Shaders\FullscreenTriangle.esh">
       <Filter>Render\Shaders</Filter>
     </None>
@@ -1563,10 +1578,22 @@
     <None Include="Render\Shaders\FFX\FFX_ParallelSort_SetupIndirect.esf">
       <Filter>Render\Shaders\FFX</Filter>
     </None>
-    <None Include="Render\Shaders\Renderer\ClusterCompaction.esf">
+    <None Include="Render\Shaders\Renderer\CullingCompaction.esf">
+      <Filter>Render\Shaders\Renderer</Filter>
+    </None>
+    <None Include="Render\Shaders\Renderer\CullingArgumentGeneration.esf">
+      <Filter>Render\Shaders\Renderer</Filter>
+    </None>
+    <None Include="Render\Shaders\Renderer\DrawCompaction.esf">
+      <Filter>Render\Shaders\Renderer</Filter>
+    </None>
+    <None Include="Render\Shaders\Renderer\DrawArgumentGeneration.esf">
       <Filter>Render\Shaders\Renderer</Filter>
     </None>
     <None Include="Render\Shaders\Renderer\ClusterCulling.esf">
+      <Filter>Render\Shaders\Renderer</Filter>
+    </None>
+    <None Include="Render\Shaders\Renderer\ClusterToInstanceUpdate.esf">
       <Filter>Render\Shaders\Renderer</Filter>
     </None>
     <None Include="Render\Shaders\Renderer\DefaultMeshShader.esh">
@@ -1683,6 +1710,9 @@
     <None Include="ThirdParty\box3d\src\recording_ops.inl">
       <Filter>ThirdParty\box3d\src</Filter>
     </None>
+    <None Include="Render\Shaders\DepthPyramidReduction.esf">
+      <Filter>Render\Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Navmesh">
@@ -1738,6 +1768,9 @@
     </Filter>
     <Filter Include="Render\Shaders\Materials">
       <UniqueIdentifier>{a9e60dc7-9650-44c6-8f83-7cafd79ba43d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\Shaders\EditorOutline">
+      <UniqueIdentifier>{e5c37a6b-8a1f-4d3c-9b02-5f6a8d2c91b4}</UniqueIdentifier>
     </Filter>
     <Filter Include="Render\Imgui">
       <UniqueIdentifier>{731b6a52-2ecf-4e4f-b301-b1261be187c3}</UniqueIdentifier>

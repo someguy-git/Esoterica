@@ -57,30 +57,35 @@ namespace EE::Render
 
         // TODO: Bunch of mutable stuff here, we don't have/need multithreaded command buffer recording right now so it's a later problem.
         // Renderer is recording very small command buffers so it's not a performance issue, all culling work is done on the GPU.
-        mutable DeviceTextureState                          m_ForwardShading_DepthTexture = {};
-        mutable DeviceTextureState                          m_ForwardShading_ColorTexture = {};
+        mutable DeviceTextureState                          m_forwardShading_depthTexture = {};
+        mutable DeviceTextureState                          m_forwardShading_colorTexture = {};
 
-        mutable DeviceTextureState                          m_DepthDownsample2 = {};
-        mutable DeviceTextureState                          m_DepthDownsample4 = {};
-        mutable DeviceTextureState                          m_DepthDownsample8 = {};
+        mutable DeviceTextureState                          m_depthDownsample2 = {};
+        mutable DeviceTextureState                          m_depthDownsample4 = {};
+        mutable DeviceTextureState                          m_depthDownsample8 = {};
 
-        mutable DeviceTextureState                          m_SMAA_StencilTexture = {};
-        mutable DeviceTextureState                          m_SMAA_EdgesTexture = {};
-        mutable DeviceTextureState                          m_SMAA_BlendTexture = {};
-        mutable DeviceTextureState                          m_SMAA_ResultTexture = {};
+        mutable DeviceTextureState                          m_SMAA_stencilTexture = {};
+        mutable DeviceTextureState                          m_SMAA_edgesTexture = {};
+        mutable DeviceTextureState                          m_SMAA_blendTexture = {};
+        mutable DeviceTextureState                          m_SMAA_resultTexture = {};
 
-        mutable DeviceTextureState                          m_GTAO_ResultTextureNoisy0 = {};
-        mutable DeviceTextureState                          m_GTAO_ResultTextureNoisy1 = {};
+        mutable DeviceTextureState                          m_GTAO_resultTextureNoisy0 = {};
+        mutable DeviceTextureState                          m_GTAO_resultTextureNoisy1 = {};
 
-        mutable DeviceTextureState                          m_GTAO_ResultTextureHalfResolution = {};
-        mutable DeviceTextureState                          m_GTAO_ResultTexture = {};
-        mutable DeviceTextureState                          m_GTAO_EdgesTexture = {};
-        mutable DeviceTextureState                          m_GTAO_PrefilterDepthTexture = {};
+        mutable DeviceTextureState                          m_GTAO_resultTextureHalfResolution = {};
+        mutable DeviceTextureState                          m_GTAO_resultTexture = {};
+        mutable DeviceTextureState                          m_GTAO_edgesTexture = {};
+        mutable DeviceTextureState                          m_GTAO_prefilterDepthTexture = {};
 
         mutable DeviceTextureState                          m_finalTexture = {};
 
         #if EE_DEVELOPMENT_TOOLS
-        mutable DeviceTextureState                          m_DebugDraw_DepthTexture = {};
+        mutable DeviceTextureState                          m_debugDraw_depthTexture = {};
+
+        mutable DeviceTextureState                          m_editorOutline_depthTexture = {};
+        mutable DeviceTextureState                          m_editorOutline_idTexture = {};
+        mutable DeviceTextureState                          m_editorOutline_JFA_Texture0 = {};
+        mutable DeviceTextureState                          m_editorOutline_JFA_Texture1 = {};
         #endif
 
         TArray<RHI::Buffer*, RHI::MaxPendingFrames>         m_GTAO_parametersBuffers = {};
@@ -94,10 +99,12 @@ namespace EE::Render
         uint32_t                                            m_numGlobalEnvironmentMapRenderViews = 0;
         uint32_t                                            m_numCascadedShadowRenderViews = 0;
         uint32_t                                            m_numForwardShadingRenderViews = 0;
+        uint32_t                                            m_numEditorOutlineRenderViews = 0;
 
         uint32_t                                            m_globalEnvironmentMapRenderViewsOffset = 0;
         uint32_t                                            m_cascadedShadowRenderViewsOffset = 0;
         uint32_t                                            m_forwardShadingRenderViewsOffset = 0;
+        uint32_t                                            m_editorOutlineRenderViewsOffset = 0;
 
         uint32_t                                            m_numRenderViews = 0;
         uint32_t                                            m_numRenderBuckets = 0;
@@ -106,15 +113,21 @@ namespace EE::Render
         #if EE_DEVELOPMENT_TOOLS
         TArray<RHI::Buffer*, RHI::MaxPendingFrames>         m_shaderDebugDrawBuffers = {};
         TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>   m_debugCommandsBuffers = {};
+        TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>   m_debugCommandsBuffersOutline = {};
         TArray<RHI::Buffer*, RHI::MaxPendingFrames>         m_debugParametersBuffers = {};
 
         TArray<RHI::Buffer*, RHI::MaxPendingFrames>         m_meshArgumentCounterBuffers = {};
         TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>   m_meshArgumentBuffers = {};
         TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>   m_meshParametersBuffers = {};
 
-        uint32_t                                            m_numCommands_TransparentDepthOnWrite = 0;
-        uint32_t                                            m_numCommands_TransparentDepthOnNoWrite = 0;
-        uint32_t                                            m_numCommands_TransparentDepthSeparateWrite = 0;
+        TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>   m_debugMeshArgumentBuffersOutline = {};
+        TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>   m_debugMeshParametersBuffersOutline = {};
+
+        uint32_t                                            m_numCommands_transparentDepthOnWrite = 0;
+        uint32_t                                            m_numCommands_transparentDepthOnNoWrite = 0;
+        uint32_t                                            m_numCommands_transparentDepthSeparateWrite = 0;
+        uint32_t                                            m_numCommands_outline = 0;
+        uint32_t                                            m_numMeshCommands_outline = 0;
 
         DeviceAppendBuffer<PickingResult>                   m_instancePickingResultsBuffer;
         DeviceResizeBuffer                                  m_instancePickingDistancesBuffer;

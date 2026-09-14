@@ -32,7 +32,7 @@ namespace EE::Render
         void Initialize( RenderPassContext const& context );
         void Shutdown( RenderSystem* pRenderSystem );
 
-        void UpdateDeviceResources( RenderSystem* pRenderSystem, TArrayView<uint32_t const> clusterCapacity, uint32_t numMeshInstancePages );
+        void UpdateDeviceResources( RenderSystem* pRenderSystem, DeviceRenderWorld const& deviceRenderWorld );
 
         void UpdateRenderViews
         (

@@ -114,7 +114,7 @@ namespace EE::Render
 
         {
             Threading::ScopeLockWrite sl( m_mutex );
-            if ( iter->second.m_meshHandle.m_handle.IsValid() )
+            if ( iter->second.m_pMeshBuffer != nullptr )
             {
                 DestroyRenderMesh( iter->second );
             }
@@ -126,7 +126,7 @@ namespace EE::Render
     {
         for ( auto& registeredMesh : m_registeredMeshes )
         {
-            if ( !registeredMesh.second.m_pClusterVertexBuffer )
+            if ( !registeredMesh.second.m_pMeshBuffer )
             {
                 CreateRenderMesh( registeredMesh.second );
             }
@@ -152,62 +152,26 @@ namespace EE::Render
         }
 
         geometryBuilder.Optimize();
+        Geometry geometry = geometryBuilder.BuildGeometry();
 
         //-------------------------------------------------------------------------
-
-        Geometry geometry = {};
-        geometry.SetVertexStride( sizeof( StaticMeshVertex ) );
-        geometry.SetBounds( OBB( geometryBuilder.ComputeAABB() ) );
-        geometryBuilder.BuildAndAppendGeometry( geometry );
-
-        //-------------------------------------------------------------------------
-        auto CopyClustersMemory = [&geometry] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
+        auto CopyMeshMemory = [&geometry] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
         {
-            Memory::CopyToWriteCombined( pDstMemory_WriteCombined, geometry.GetClusterVertices().data(), dstSize );
+            Memory::CopyToWriteCombined( pDstMemory_WriteCombined, geometry.GetMeshData().data(), dstSize );
         };
 
-        RHI::BufferParameters clusterVertexBufferParameters = {};
-        clusterVertexBufferParameters.m_bufferSize = geometry.GetNumClusterVertices() * geometry.GetClusterVertexStride();
-        clusterVertexBufferParameters.m_descriptorTypes.SetMultipleFlags( RHI::DescriptorTypeFlags::Buffer, RHI::DescriptorTypeFlags::Raw );
-        clusterVertexBufferParameters.m_debugName.sprintf( "Vertices %s", registeredMesh.m_name.c_str() );
+        RHI::BufferParameters meshBufferParameters = {};
+        meshBufferParameters.m_bufferSize = geometry.GetMeshData().size();
+        meshBufferParameters.m_descriptorTypes.SetMultipleFlags( RHI::DescriptorTypeFlags::Buffer, RHI::DescriptorTypeFlags::Raw );
+        meshBufferParameters.m_debugName.sprintf( "DebugMesh %s", registeredMesh.m_name.c_str() );
 
-        registeredMesh.m_pClusterVertexBuffer = m_pRenderSystem->QueueBufferCreate( CopyClustersMemory, clusterVertexBufferParameters );
-
-        //-------------------------------------------------------------------------
-        auto CopyTrianglesMemory = [&geometry] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
-        {
-            Memory::CopyToWriteCombined( pDstMemory_WriteCombined, geometry.GetClusterTriangles().data(), dstSize );
-        };
-
-        RHI::BufferParameters clusterTriangleBufferParameters = {};
-        clusterTriangleBufferParameters.m_bufferSize = geometry.GetNumClusterTriangles() * sizeof( uint32_t );
-        clusterTriangleBufferParameters.m_bufferStride = sizeof( uint32_t );
-        clusterTriangleBufferParameters.m_debugName.sprintf( "Triangles %s", registeredMesh.m_name.c_str() );
-
-        registeredMesh.m_pClusterTriangleBuffer = m_pRenderSystem->QueueBufferCreate( CopyTrianglesMemory, clusterTriangleBufferParameters );
-
-        //-------------------------------------------------------------------------
-        MeshUpdate meshUpdate = m_pRenderSystem->CreateMesh( 1, geometry.GetNumClusters() );
-
-        registeredMesh.m_meshHandle = meshUpdate.m_meshHandle;
-        registeredMesh.m_clustersHandle = meshUpdate.m_clustersHandle;
-
-        meshUpdate.m_deviceMeshes[0].m_clusterVertexBuffer = RHI::GetBufferHandle( registeredMesh.m_pClusterVertexBuffer, RHI::DescriptorTypeFlags::Buffer );
-        meshUpdate.m_deviceMeshes[0].m_clusterTriangleBuffer = RHI::GetBufferHandle( registeredMesh.m_pClusterTriangleBuffer, RHI::DescriptorTypeFlags::Buffer );
-
-        meshUpdate.m_deviceMeshes[0].m_numBones = 0;
-
-        m_pRenderSystem->WriteCommonMeshData( meshUpdate, 0, 0, geometry );
-        m_pRenderSystem->QueueMeshUpdate( meshUpdate.m_meshHandle, meshUpdate.m_clustersHandle );
+        registeredMesh.m_pMeshBuffer = m_pRenderSystem->QueueBufferCreate( CopyMeshMemory, meshBufferParameters );
+        registeredMesh.m_numClusters = geometry.GetNumClusters();
     }
 
     void DebugMeshRegistry::DestroyRenderMesh( RegisteredMesh& registeredMesh )
     {
-        m_pRenderSystem->QueueResourceDelete
-        (
-            eastl::move( registeredMesh.m_pClusterVertexBuffer ), eastl::move( registeredMesh.m_pClusterTriangleBuffer ),
-            TPair{ eastl::move( registeredMesh.m_meshHandle ), eastl::move( registeredMesh.m_clustersHandle ) }
-        );
+        m_pRenderSystem->QueueResourceDelete( eastl::move( registeredMesh.m_pMeshBuffer ) );
     }
 }
 #endif

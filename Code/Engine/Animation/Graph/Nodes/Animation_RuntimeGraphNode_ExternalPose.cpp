@@ -8,24 +8,19 @@
 
 namespace EE::Animation
 {
-    void ExternalPoseData::Reset()
-    {
-        m_rootMotion = Transform::Identity;
-        m_hasRootMotion = false;
-        m_isRootMotionDelta = true;
-    }
-
-    //-------------------------------------------------------------------------
-
     void ExternalPoseNode::Definition::InstantiateNode( InstantiationContext const &context, InstantiationOptions options ) const
     {
         CreateNode<ExternalPoseNode>( context, options );
     }
 
-    bool ExternalPoseNode::IsValid() const
+    void ExternalPoseNode::Definition::PostInstantiateNode( InstantiationContext const &context ) const
     {
-        return PoseNode::IsValid() && m_isPoseSet;
+        auto pNode = static_cast<ExternalPoseNode*>( context.m_nodePtrs[context.m_currentNodeIdx] );
+        pNode->m_externalPoseBufferID = context.m_pTaskSystem->CreateCachedPose();
+        EE_ASSERT( pNode->m_externalPoseBufferID.IsValid() );
     }
+
+    //-------------------------------------------------------------------------
 
     void ExternalPoseNode::InitializeInternal( GraphContext &context, SyncTrackTime const &initialTime )
     {
@@ -46,82 +41,42 @@ namespace EE::Animation
     {
         EE_ASSERT( context.IsValid() );
 
+        MarkNodeActive( context );
+
         GraphPoseNodeResult result;
         result.m_sampledEventRange = context.GetEmptySampledEventRange();
 
-        if ( !IsValid() )
+        // Set node time
+        m_previousTime = m_currentTime = 1.0f;
+        m_duration = 0;
+
+        // Forward root-motion to the graph, and clear the delta
+        result.m_rootMotionDelta = m_rootMotionDelta;
+
+        #if EE_DEVELOPMENT_TOOLS
+        context.GetRootMotionDebugger()->RecordSampling( GetNodePath( context ), result.m_rootMotionDelta );
+        #endif
+
+        m_rootMotionDelta = Transform::Identity;
+
+        // Set the layer bone-mask
+        // TODO: this needs to be tested in a variety of situations!
+        if ( context.m_pLayerContext != nullptr && m_boneMask.HasTasks() )
         {
-            return result;
+            // If we dont have a bone mask task list, use the task list in the code
+            if ( !context.m_pLayerContext->m_layerMaskTaskList.HasTasks() )
+            {
+                context.m_pLayerContext->m_layerMaskTaskList.CopyFrom( m_boneMask );
+            }
+            else // If we already have a bone mask set, combine the bone masks
+            {
+                context.m_pLayerContext->m_layerMaskTaskList.CombineWith( m_boneMask );
+            }
         }
 
-        MarkNodeActive( context );
-
-        // Root Motion
-        //-------------------------------------------------------------------------
-
-        if ( m_poseData.m_hasRootMotion )
-        {
-            EE_ASSERT( !m_poseData.m_rootMotion.HasScale() );
-
-            if ( m_poseData.m_isRootMotionDelta )
-            {
-                result.m_rootMotionDelta = m_poseData.m_rootMotion;
-            }
-            else
-            {
-                result.m_rootMotionDelta = m_poseData.m_rootMotion * context.m_worldTransformInverse;
-            }
-
-            #if EE_DEVELOPMENT_TOOLS
-            context.GetRootMotionDebugger()->RecordSampling( GetNodePath( context ), result.m_rootMotionDelta );
-            #endif
-        }
-
-        // Register pose tasks
-        //-------------------------------------------------------------------------
-
-        //if ( hasdata )
-        //{
-        //    // Register task
-        //    result.m_taskIdx = context.GetTaskSystem()->RegisterTask<ExternalPoseReadTask>( GetNodePath( context ), GetNodeIdx() );
-        //}
+        // Register the read
+        result.m_taskIdx = context.GetTaskSystem()->RegisterTask<CachedPoseReadTask>( GetNodePath( context ), m_externalPoseBufferID );
 
         return result;
-    }
-
-    //-------------------------------------------------------------------------
-
-    void IsExternalPoseSetNode::Definition::InstantiateNode( InstantiationContext const &context, InstantiationOptions options ) const
-    {
-        auto pNode = CreateNode<IsExternalPoseSetNode>( context, options );
-        context.SetNodePtrFromIndex( m_externalPoseNodeIdx, pNode->m_pExternalPoseNode );
-    }
-
-    void IsExternalPoseSetNode::InitializeInternal( GraphContext &context )
-    {
-        EE_ASSERT( context.IsValid() );
-        BoolValueNode::InitializeInternal( context );
-        m_result = false;
-    }
-
-    void IsExternalPoseSetNode::ShutdownInternal( GraphContext &context )
-    {
-        EE_ASSERT( context.IsValid() );
-        BoolValueNode::ShutdownInternal( context );
-    }
-
-    void IsExternalPoseSetNode::GetValueInternal( GraphContext &context, void *pOutValue )
-    {
-        EE_ASSERT( context.IsValid() );
-
-        // Is the Result up to date?
-        if ( !WasUpdated( context ) )
-        {
-            m_result = m_pExternalPoseNode->IsPoseSet();
-            MarkNodeActive( context );
-        }
-
-        // Set Result
-        *( (bool *) pOutValue ) = m_result;
     }
 }

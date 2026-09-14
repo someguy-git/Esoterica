@@ -8,23 +8,29 @@ The pipeline produces ready-to-use indirect draw argument buffers for each shade
 
 We create a render view for the main camera, each shadow cascade, and each environment map face. Directional lights create 4 render views each for Cascaded Shadow Mapping.
 
-Each render view maps to one bit of a 64-bit view mask. The culling passes produce one indirect draw argument buffer per shader, per render view and sub-bucket, through a shared compaction pass that batches clusters into per-shader record chunks and mesh dispatch arguments.
+Each render view maps to one bit of a 64-bit view mask. The culling passes produce one indirect draw argument buffer per shader, per render view and sub-bucket, through a shared draw compaction pass that scatters visible cluster slots into dense per-( view, bucket ) draw buffers.
 
 ## Culling Passes
 
-Culling is done using 3 indirect compute dispatches:
+Culling runs in six GPU compute passes:
 
-**Instance culling** runs one 64-thread group per mesh instance page, tests each instance against every render view, and writes visible instances as compacted records into a per-page visibility buffer. Each page emits one indirect argument that drives the next stage.
+**Instance culling** runs 128-thread groups ( 1 thread per instance ), tests each instance against every render view, and writes a 64-bit visibility mask for every instance.
 
-**Cluster compaction** runs one 128-thread group per page, groups the page's visible instances by material shader, and writes cluster records into per-shader chunks of a shared record buffer. Each chunk appends one cluster culling argument, the argument encodes cluster record into the root constants.
+**Culling compaction** runs 128-thread groups ( 1 thread per instance ) and, for each visible instance, atomically reserves one work entry per cluster in the culling work buffer, then writes the entries sequentially.
 
-**Cluster culling** runs one 128-thread group per 128 cluster records, performs per-cluster frustum and screen-size tests per view, and builds a 128-bit visibility mask per view and sub-bucket. Each non-empty mask is appended as an indirect mesh dispatch argument into that view, shader and sub-bucket's draw argument buffer.
+**Culling argument generation** reads the work counter and writes one cluster culling argument plus one draw compaction argument per 65k-group chunk of the work buffer.
+
+**Cluster culling** executes indirectly over the chunk arguments, one thread per work entry. It performs per-cluster frustum and screen-size tests for each view, writes the resulting 64-bit visibility mask back into the work entry, and atomically counts the cluster per view and sub-bucket.
+
+**Draw argument generation** prefix-sums the per-( view, bucket ) counts into per-bucket base offsets and writes one draw argument per non-empty bucket, split into 65k-group draws.
+
+**Draw compaction** executes indirectly over the chunk arguments and scatters the slots of visible clusters into dense per-( view, bucket ) draw cluster buffers, which the mesh shaders index directly.
 
 ## Draw Arguments
 
 Three sub-buckets exist per shader per view: opaque, alpha-tested and alpha-blended. The sub-bucket is selected at runtime using the shader flags specified in the material.
 
-Each bucket has its own draw counter and draw argument buffer; culling appends masks through atomic counters, batching many clusters into a small number of mesh dispatches per bucket.
+Each bucket has its own draw counter and draw argument buffer, those are filled by the culling pipeline and grouped into 65k-group dispatches.
 
 Each render pass executes its draw argument buffers with the per-bucket counters. Shadow passes do a single depth pass; the forward shading pass runs a depth prepass followed by opaque and alpha blending passes.
 

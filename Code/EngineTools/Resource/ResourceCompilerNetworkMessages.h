@@ -24,7 +24,7 @@ namespace EE::Resource
 
         struct Request
         {
-            EE_SERIALIZE( m_resourceID, m_taskID, m_isForPackagedBuild, m_forceCompilation );
+            EE_SERIALIZE( m_resourceID, m_taskID, m_isForShippingBuild, m_forceCompilation );
 
             Request() = default;
 
@@ -35,7 +35,7 @@ namespace EE::Resource
 
             ResourceID              m_resourceID;
             UUID                    m_taskID;
-            bool                    m_isForPackagedBuild = false;
+            bool                    m_isForShippingBuild = false;
             bool                    m_forceCompilation = false;
         };
 

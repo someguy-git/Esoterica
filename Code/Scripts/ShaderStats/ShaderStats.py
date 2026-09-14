@@ -293,6 +293,10 @@ def xml_to_markdown_table(xml_file_path, output_file_path):
         
         # Only process PS and CS shaders
         if stage in ['PS', 'CS']:
+            # Only include default entry point variants (skip PS_main_OutlineID and friends)
+            if stage == 'PS' and entry_point != 'PS_main':
+                continue
+
             shaders.append({
                 'name': name,
                 'permutation': permutation,

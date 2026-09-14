@@ -6,6 +6,7 @@
 #include "Engine/Render/RenderMesh.h"
 #include "Engine/Render/RenderGeometryBuilder.h"
 #include "Base/Serialization/BinarySerialization.h"
+#include "EASTL/sort.h"
 
 //-------------------------------------------------------------------------
 
@@ -132,6 +133,134 @@ namespace EE::Render
 
     //-------------------------------------------------------------------------
 
+    static MeshStatistics ComputeGeometryStats( Geometry const& geometry, uint64_t uncompressedSizeBytes )
+    {
+        MeshStatistics stats = {};
+
+        stats.m_numVertices = geometry.GetNumVertices();
+        stats.m_numTriangles = geometry.GetNumTriangles();
+        stats.m_numClusters = geometry.GetNumClusters();
+
+        stats.m_compressedSizeBytes = geometry.GetMemoryFootprint();
+        stats.m_uncompressedSizeBytes = uncompressedSizeBytes;
+        stats.m_compressionRatio = stats.m_uncompressedSizeBytes > 0 ? float( stats.m_compressedSizeBytes ) / float( stats.m_uncompressedSizeBytes ) : 0.0F;
+
+        stats.m_vertexTriangleReuse = stats.m_numVertices > 0 ? float( stats.m_numTriangles ) * 3.0F / float( stats.m_numVertices ) : 0.0F;
+
+        if ( stats.m_numClusters == 0 )
+        {
+            return stats;
+        }
+
+        TVector<float> clusterUtilizations;
+        clusterUtilizations.reserve( stats.m_numClusters );
+
+        uint64_t totalPositionBitsPerAxisX = 0;
+        uint64_t totalPositionBitsPerAxisY = 0;
+        uint64_t totalPositionBitsPerAxisZ = 0;
+        uint64_t totalPositionBitsPerVertex = 0;
+
+        TVector<uint32_t> bitsPerAxisX;
+        TVector<uint32_t> bitsPerAxisY;
+        TVector<uint32_t> bitsPerAxisZ;
+        bitsPerAxisX.reserve( stats.m_numClusters );
+        bitsPerAxisY.reserve( stats.m_numClusters );
+        bitsPerAxisZ.reserve( stats.m_numClusters );
+
+        stats.m_minimumPositionBitsPerVertex = UINT32_MAX;
+        stats.m_minimumClusterUtilization = 1.0F;
+        stats.m_minimumCompressionAccuracy = 1.0F;
+
+        double totalClusterUtilization = 0.0;
+        double totalCompressionAccuracy = 0.0;
+
+        for ( uint32_t clusterIndex = 0; clusterIndex < stats.m_numClusters; ++clusterIndex )
+        {
+            MeshCluster const& cluster = geometry.GetCluster( clusterIndex );
+
+            // Position bits
+            //-------------------------------------------------------------------------
+
+            uint32_t const bitsX = cluster.GetNumPositionBitsX();
+            uint32_t const bitsY = cluster.GetNumPositionBitsY();
+            uint32_t const bitsZ = cluster.GetNumPositionBitsZ();
+            uint32_t const bitsPerVertex = bitsX + bitsY + bitsZ;
+
+            totalPositionBitsPerAxisX += bitsX;
+            totalPositionBitsPerAxisY += bitsY;
+            totalPositionBitsPerAxisZ += bitsZ;
+            totalPositionBitsPerVertex += bitsPerVertex;
+
+            bitsPerAxisX.push_back( bitsX );
+            bitsPerAxisY.push_back( bitsY );
+            bitsPerAxisZ.push_back( bitsZ );
+
+            stats.m_minimumPositionBitsPerVertex = Math::Min( stats.m_minimumPositionBitsPerVertex, bitsPerVertex );
+            stats.m_maximumPositionBitsPerVertex = Math::Max( stats.m_maximumPositionBitsPerVertex, bitsPerVertex );
+
+            // Cluster utilization ( vertex slots )
+            //-------------------------------------------------------------------------
+
+            float const utilization = float( cluster.GetNumVertices() ) / float( MeshCluster::MaxVerticesPerCluster );
+            clusterUtilizations.push_back( utilization );
+            stats.m_minimumClusterUtilization = Math::Min( stats.m_minimumClusterUtilization, utilization );
+            stats.m_maximumClusterUtilization = Math::Max( stats.m_maximumClusterUtilization, utilization );
+            totalClusterUtilization += utilization;
+
+            // Compression accuracy - quantization error vs cluster extent
+            //-------------------------------------------------------------------------
+
+            Float3 aabbMin, aabbMax;
+            cluster.GetAABB( aabbMin, aabbMax );
+
+            float const dx = aabbMax.m_x - aabbMin.m_x;
+            float const dy = aabbMax.m_y - aabbMin.m_y;
+            float const dz = aabbMax.m_z - aabbMin.m_z;
+            float const clusterExtent = Math::Sqrt( dx * dx + dy * dy + dz * dz );
+            float const quantizationError = ldexpf( 0.5F, cluster.GetSharedExponent() );
+            float const accuracy = clusterExtent > 0.0F ? Math::Max( 0.0F, 1.0F - quantizationError / clusterExtent ) : 1.0F;
+            stats.m_minimumCompressionAccuracy = Math::Min( stats.m_minimumCompressionAccuracy, accuracy );
+            totalCompressionAccuracy += accuracy;
+        }
+
+        float const numClustersF = float( stats.m_numClusters );
+
+        stats.m_averagePositionBitsPerAxisX = float( totalPositionBitsPerAxisX ) / numClustersF;
+        stats.m_averagePositionBitsPerAxisY = float( totalPositionBitsPerAxisY ) / numClustersF;
+        stats.m_averagePositionBitsPerAxisZ = float( totalPositionBitsPerAxisZ ) / numClustersF;
+        stats.m_averagePositionBitsPerVertex = float( totalPositionBitsPerVertex ) / numClustersF;
+
+        eastl::sort( bitsPerAxisX.begin(), bitsPerAxisX.end() );
+        eastl::sort( bitsPerAxisY.begin(), bitsPerAxisY.end() );
+        eastl::sort( bitsPerAxisZ.begin(), bitsPerAxisZ.end() );
+
+        uint32_t const medianClusterIndex = stats.m_numClusters / 2;
+
+        stats.m_minimumPositionBitsPerAxisX = bitsPerAxisX[0];
+        stats.m_minimumPositionBitsPerAxisY = bitsPerAxisY[0];
+        stats.m_minimumPositionBitsPerAxisZ = bitsPerAxisZ[0];
+
+        stats.m_medianPositionBitsPerAxisX = float( bitsPerAxisX[medianClusterIndex] );
+        stats.m_medianPositionBitsPerAxisY = float( bitsPerAxisY[medianClusterIndex] );
+        stats.m_medianPositionBitsPerAxisZ = float( bitsPerAxisZ[medianClusterIndex] );
+
+        stats.m_maximumPositionBitsPerAxisX = bitsPerAxisX[stats.m_numClusters - 1];
+        stats.m_maximumPositionBitsPerAxisY = bitsPerAxisY[stats.m_numClusters - 1];
+        stats.m_maximumPositionBitsPerAxisZ = bitsPerAxisZ[stats.m_numClusters - 1];
+
+        stats.m_averageClusterUtilization = float( totalClusterUtilization / double( stats.m_numClusters ) );
+        stats.m_clusterVertexOverhead = 1.0F - stats.m_averageClusterUtilization;
+
+        eastl::sort( clusterUtilizations.begin(), clusterUtilizations.end() );
+        stats.m_medianClusterUtilization = clusterUtilizations[stats.m_numClusters / 2];
+
+        stats.m_averageCompressionAccuracy = float( totalCompressionAccuracy / double( stats.m_numClusters ) );
+
+        return stats;
+    }
+
+    //-------------------------------------------------------------------------
+
     Resource::CompilationResult MeshCompiler::CompileMesh( Resource::CompileContext const& ctx, Mesh& mesh, MeshResourceDescriptor const& resourceDescriptor, MeshGroup const& meshGroup ) const
     {
         bool hasWarnings = false;
@@ -248,6 +377,7 @@ namespace EE::Render
             //-------------------------------------------------------------------------
 
             bool isValidMeshData = false;
+            TVector<MeshStatistics> lodGeometryStats;
 
             for ( GeometryBuilder const& geometryBuilder : convertedMesh.m_geometryBuilders )
             {
@@ -258,8 +388,7 @@ namespace EE::Render
                 }
 
                 Geometry geometry = {};
-                geometry.SetNumSkinningAttributes( geometryBuilder.GetNumSkinningAttributes() );
-                geometry.SetVertexStride( sizeof( StaticMeshVertex ) + geometryBuilder.GetNumSkinningAttributes() * sizeof( SkinningAttribute ) );
+                uint64_t geometryUncompressedSizeBytes = 0;
 
                 if ( lod.m_autoGenerateLOD )
                 {
@@ -278,34 +407,33 @@ namespace EE::Render
                     if ( simplificationSuccess || &lod == meshGroup.m_lodSettings.begin() )
                     {
                         lodGeometryBuilder.Optimize();
-                        lodGeometryBuilder.BuildAndAppendGeometry( geometry );
-                        geometry.SetBounds( OBB( lodGeometryBuilder.ComputeAABB() ) ); // TODO: use real algorithm to find minimal bounding box, for now use AABB
+                        geometry = lodGeometryBuilder.BuildGeometry();
+                        geometryUncompressedSizeBytes = uint64_t( lodGeometryBuilder.GetVertices().size() ) + uint64_t( lodGeometryBuilder.GetIndices().size() ) * 4;
 
                         isValidMeshData = true;
 
-                        EE_ASSERT( !geometry.m_clusterVertices.empty() );
-                        EE_ASSERT( !geometry.m_clusterTriangles.empty() );
+                        EE_ASSERT( !geometry.GetMeshData().empty() );
                     }
                 }
                 else
                 {
-                    geometryBuilder.BuildAndAppendGeometry( geometry );
-                    geometry.SetBounds( OBB( geometryBuilder.ComputeAABB() ) ); // TODO: use real algorithm to find minimal bounding box, for now use AABB
+                    geometry = geometryBuilder.BuildGeometry();
+                    geometryUncompressedSizeBytes = uint64_t( geometryBuilder.GetVertices().size() ) + uint64_t( geometryBuilder.GetIndices().size() ) * 4;
 
                     isValidMeshData = true;
 
-                    EE_ASSERT( !geometry.m_clusterVertices.empty() );
-                    EE_ASSERT( !geometry.m_clusterTriangles.empty() );
+                    EE_ASSERT( !geometry.GetMeshData().empty() );
 
                 }
 
                 if ( isValidMeshData )
                 {
-                    if ( geometry.m_clusterVertices.empty() || geometry.m_clusterTriangles.empty() )
+                    if ( geometry.GetMeshData().empty() )
                     {
                         continue;
                     }
 
+                    lodGeometryStats.emplace_back( ComputeGeometryStats( geometry, geometryUncompressedSizeBytes ) );
                     mesh.m_geometry.emplace_back( eastl::move( geometry ) );
                 }
             }
@@ -325,7 +453,7 @@ namespace EE::Render
                     }
 
                     Geometry const& geometry = mesh.m_geometry[lodGeometryBaseIndex + geometryIndex];
-                    if ( geometry.m_clusterVertices.empty() || geometry.m_clusterTriangles.empty() )
+                    if ( geometry.GetMeshData().empty() )
                     {
                         continue;
                     }
@@ -353,6 +481,12 @@ namespace EE::Render
                     geometryIndex++;
                 }
 
+                MeshStatistics lodStatistics = {};
+                for ( MeshStatistics const& geometryStats : lodGeometryStats )
+                {
+                    lodStatistics.Accumulate( geometryStats );
+                }
+                mesh.m_statisticsPerLOD.push_back( lodStatistics );
                 mesh.m_geometryLODDistance.push_back( lod.m_lodDistance );
             }
         }

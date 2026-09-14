@@ -1,0 +1,8 @@
+#ifndef EDITOROUTLINE_COMMON_ESH
+#define EDITOROUTLINE_COMMON_ESH
+
+#ifndef __cplusplus
+static const float EditorOutline_SeedCoordinateScale = 65535.0;
+#endif
+
+#endif

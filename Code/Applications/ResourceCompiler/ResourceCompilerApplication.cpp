@@ -22,7 +22,7 @@ namespace EE::Resource
             CommandLineParser cl;
             cl.AddOptionalStringArg( "compile", "Compile resource" );
             cl.AddOptionalBoolArg( "force", "Force compilation", false );
-            cl.AddOptionalBoolArg( "package", "Compile resource for packaged build.", false );
+            cl.AddOptionalBoolArg( "shipping", "Compile resource for shipping build.", false );
             cl.AddOptionalIntArg( "worker", "worker ID", 0 );
 
             if ( cl.Parse( argc, argv ) )
@@ -37,7 +37,7 @@ namespace EE::Resource
                 {
                     m_isStandaloneCompile = true;
                     m_isForcedCompilation = cl.GetBoolArg( "force" );
-                    m_isForPackagedBuild = cl.GetBoolArg( "package" );
+                    m_isForShippingBuild = cl.GetBoolArg( "shipping" );
 
                     // Get compile argument
                     String rawDataPath = cl.GetStringArg( "compile" ).c_str();
@@ -69,7 +69,7 @@ namespace EE::Resource
     public:
 
         ResourceID          m_resourceID;
-        bool                m_isForPackagedBuild = false;
+        bool                m_isForShippingBuild = false;
         bool                m_isForcedCompilation = false;
         bool                m_isStandaloneCompile = true;
         int64_t             m_uniqueID = 0;
@@ -171,7 +171,7 @@ namespace EE::Resource
             std::cout << Resource::Compiler::s_logDelimiter;
 
             m_resourceToCompile = cmdLine.m_resourceID;
-            m_isForPackagedBuild = cmdLine.m_isForPackagedBuild;
+            m_isForShippingBuild = cmdLine.m_isForShippingBuild;
             m_forceCompilation = cmdLine.m_isForcedCompilation;
         }
 
@@ -254,9 +254,9 @@ namespace EE::Resource
             m_compiledResourceDB,
             *m_pCompilerRegistry,
             m_pSettings->m_sourceDataDirectoryPath,
-            m_isForPackagedBuild ? m_pSettings->m_packagedBuildCompiledResourceDirectoryPath : m_pSettings->m_compiledResourceDirectoryPath,
+            m_isForShippingBuild ? m_pSettings->m_shippingBuildCompiledResourceDirectoryPath : m_pSettings->m_compiledResourceDirectoryPath,
             Platform::Target::PC,
-            m_isForPackagedBuild
+            m_isForShippingBuild
         );
 
         compileContext.m_forceCompilation = m_forceCompilation;
@@ -296,9 +296,9 @@ namespace EE::Resource
                         m_compiledResourceDB,
                         *m_pCompilerRegistry,
                         m_pSettings->m_sourceDataDirectoryPath,
-                        networkRequest.m_isForPackagedBuild ? m_pSettings->m_packagedBuildCompiledResourceDirectoryPath : m_pSettings->m_compiledResourceDirectoryPath,
+                        networkRequest.m_isForShippingBuild ? m_pSettings->m_shippingBuildCompiledResourceDirectoryPath : m_pSettings->m_compiledResourceDirectoryPath,
                         Platform::Target::PC,
-                        networkRequest.m_isForPackagedBuild
+                        networkRequest.m_isForShippingBuild
                     ) );
 
                     EE_ASSERT( networkRequest.m_taskID.IsValid() );

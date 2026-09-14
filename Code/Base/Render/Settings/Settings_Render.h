@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Base/Settings/Settings.h"
+#include "Base/Types/Color.h"
 
 //-------------------------------------------------------------------------
 
@@ -22,8 +23,14 @@ namespace EE::Render
         EE_REFLECT( Category = "Misc" );
         uint32_t                m_stagingBufferSize = 32 << 20;
 
+        EE_REFLECT( Category = "Misc" );
+        float                   m_editorOutlineThickness = 2.0F;
+
+        EE_REFLECT( Category = "Misc" );
+        Color                   m_editorOutlineColor = Color( 255, 153, 51 );
+
         EE_REFLECT( Category = "Light Culling" );
-        float                   m_lightCullingMinCellSize = 4.0f;
+        float                   m_lightCullingMinCellSize = 4.0F;
 
         EE_REFLECT( Category = "Light Culling" );
         uint32_t                m_lightCullingInitialDispatchX = 8;

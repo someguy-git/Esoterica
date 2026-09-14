@@ -18,7 +18,7 @@ namespace EE::Memory::Allocators
 
 namespace EE::Render::RHI
 {
-    enum Limits
+    enum Limits : uint32_t
     {
         MaxInstanceExtensions = 64,
         MaxDeviceExtensions = 64,
@@ -130,6 +130,7 @@ namespace EE::Render::RHI
         RGBA32_SFloat,
         RG11_B10_UFloat,
         RGB9_E5_UFloat,
+        D16_UNorm,
         D32_SFloat,
         D32_SFloat_S8_UInt,
         S8_Uint,
@@ -1574,14 +1575,16 @@ namespace EE::Render::RHI
     EE_BASE_API void BeginFrameCapture( Context* pContext );
     EE_BASE_API void EndFrameCapture( Context* pContext );
 
+    EE_BASE_API void SetCurrentFrameIndex( Context* pContext, uint32_t frameIndex );
+
     EE_BASE_API Queue* CreateQueue( Context* pContext, QueueParameters const& parameters );
     EE_BASE_API void DestroyQueue( Context* pContext, Queue*&& pQueue );
     EE_BASE_API uint64_t QueueGetCurrentSemaphore( Queue* pQueue );
     EE_BASE_API uint64_t QueueGetCompletedSemaphore( Queue* pQueue );
     EE_BASE_API void QueueHostWait( Queue* pQueue, uint64_t semaphore );
     EE_BASE_API void QueueDeviceWait( Queue* pQueueThatWaits, Queue* pQueueToWaitFor, uint64_t semaphore );
-    EE_BASE_API uint64_t QueueSubmit( Queue* pQueue, TArrayView<CommandBuffer*> commandBuffer );
-    EE_BASE_API uint64_t QueuePresent( Queue* pQueue, Swapchain* pSwapchain, uint32_t imageIndex );
+    EE_BASE_API uint64_t QueueSubmit( Context* pContext, Queue* pQueue, TArrayView<CommandBuffer*> commandBuffer );
+    EE_BASE_API uint64_t QueuePresent( Context* pContext, Queue* pQueue, Swapchain* pSwapchain, uint32_t imageIndex );
     EE_BASE_API void WaitQueueIdle( Queue* pQueue );
 
     EE_BASE_API Swapchain* CreateSwapchain( Context* pContext, SwapchainParameters const& parameters );

@@ -39,7 +39,10 @@ namespace EE::Animation
         void CalculateModelSpaceTransforms();
 
         inline Pose* GetPrimaryPose() { return &m_poses[0]; }
+        inline Pose const* GetPrimaryPose() const { return &m_poses[0]; }
         inline Skeleton const* GetPrimarySkeleton() const { return m_poses[0].GetSkeleton(); }
+
+        Pose* GetSecondaryPose( Skeleton const *pSkeleton );
 
     protected:
 

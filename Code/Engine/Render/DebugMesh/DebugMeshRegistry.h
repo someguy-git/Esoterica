@@ -45,11 +45,8 @@ namespace EE::Render
             String              m_name;
             DebugMesh           m_mesh;
 
-            MeshHandle          m_meshHandle = {};
-            ClustersHandle      m_clustersHandle = {};
-
-            RHI::Buffer*        m_pClusterVertexBuffer = nullptr;
-            RHI::Buffer*        m_pClusterTriangleBuffer = nullptr;
+            RHI::Buffer*        m_pMeshBuffer = nullptr;
+            uint32_t            m_numClusters = 0;
         };
 
     public:
@@ -68,10 +65,10 @@ namespace EE::Render
         uint64_t RegisterMesh( InlineString const& name, DebugMesh&& mesh );
         void UnregisterMesh( uint64_t meshID );
 
-        bool IsValidMeshID( uint64_t meshID ) const 
+        bool IsValidMeshID( uint64_t meshID ) const
         {
             EE_ASSERT( meshID > 0 );
-            return m_registeredMeshes.find( meshID ) != m_registeredMeshes.end(); 
+            return m_registeredMeshes.find( meshID ) != m_registeredMeshes.end();
         }
 
         inline RegisteredMesh const* FindMesh( uint64_t meshID ) const
@@ -82,7 +79,7 @@ namespace EE::Render
                 return &itr->second;
             }
             return nullptr;
-        } 
+        }
 
         DebugMesh const* GetDebugMesh( uint64_t meshID ) const
         {

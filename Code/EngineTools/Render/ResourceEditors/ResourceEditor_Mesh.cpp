@@ -132,8 +132,8 @@ namespace EE::Render
             for ( Geometry const& geo : pMesh->GetGeometry() )
             {
                 totalMemoryFootprint += float( geo.GetMemoryFootprint() ) / ( 1024.0F * 1024.0F );
-                totalNumVertices += geo.GetNumClusterVertices();
-                totalNumTriangles += geo.GetNumClusterTriangles();
+                totalNumVertices += geo.GetNumVertices();
+                totalNumTriangles += geo.GetNumTriangles();
                 totalNumClusters += geo.GetNumClusters();
             }
 
@@ -421,21 +421,21 @@ namespace EE::Render
             {
                 for ( Geometry const& geo : pMesh->GetGeometry() )
                 {
-                    geo.IterateAllTriangles( [&geo, this, &drawingContext] ( Int3 clusterAnchor, int32_t clusterExponent, uint32_t vertexIndex0, uint32_t vertexIndex1, uint32_t vertexIndex2 )
+                    geo.IterateAllTriangles( [&geo, this, &drawingContext] ( uint32_t clusterIndex, uint32_t vertexIndex0, uint32_t vertexIndex1, uint32_t vertexIndex2 )
                     {
                         // Fetch compressed vertices
-                        StaticMeshVertex const& vertex0 = geo.GetVertex<StaticMeshVertex>( vertexIndex0 );
-                        StaticMeshVertex const& vertex1 = geo.GetVertex<StaticMeshVertex>( vertexIndex1 );
-                        StaticMeshVertex const& vertex2 = geo.GetVertex<StaticMeshVertex>( vertexIndex2 );
+                        MeshCluster::VertexNormalAttribute vertex0 = geo.GetVertexNormal( clusterIndex, vertexIndex0 );
+                        MeshCluster::VertexNormalAttribute vertex1 = geo.GetVertexNormal( clusterIndex, vertexIndex1 );
+                        MeshCluster::VertexNormalAttribute vertex2 = geo.GetVertexNormal( clusterIndex, vertexIndex2 );
 
                         // Decompress positions and normals
-                        Float3 vertexPosition0 = vertex0.GetPosition( clusterAnchor, clusterExponent );
+                        Float3 vertexPosition0 = geo.GetVertexPosition( clusterIndex, vertexIndex0 );
                         Float3 vertexNormal0 = vertex0.GetNormal();
 
-                        Float3 vertexPosition1 = vertex1.GetPosition( clusterAnchor, clusterExponent );
+                        Float3 vertexPosition1 = geo.GetVertexPosition( clusterIndex, vertexIndex1 );
                         Float3 vertexNormal1 = vertex1.GetNormal();
 
-                        Float3 vertexPosition2 = vertex2.GetPosition( clusterAnchor, clusterExponent );
+                        Float3 vertexPosition2 = geo.GetVertexPosition( clusterIndex, vertexIndex2 );
                         Float3 vertexNormal2 = vertex2.GetNormal();
 
                         if ( m_showVertices )
@@ -646,72 +646,80 @@ namespace EE::Render
         auto pMesh = m_editedResource.GetPtr<Mesh>();
         EE_ASSERT( pMesh != nullptr );
 
-        float const indexColumnWidth = ImGui::CalcTextSize( "999" ).x;
+        TArrayView<float const> lodDistance = pMesh->GetLODDistances();
+        uint32_t const numLODs = uint32_t( lodDistance.size() );
+
+        float const labelColumnWidth = ImGui::CalcTextSize( "Vtx compression avg accuracy" ).x + ImGui::GetStyle().CellPadding.x * 2.0F;
         float const dataColumnWidth = ImGui::CalcTextSize( "999.999%" ).x;
 
-        if ( ImGui::BeginTable( "LOD", 11, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY, ImGui::GetContentRegionAvail() ) )
+        if ( ImGui::BeginTable( "LOD", int32_t( numLODs ) + 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY, ImGui::GetContentRegionAvail() ) )
         {
-            ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_NoHide | ImGuiTableColumnFlags_NoReorder | ImGuiTableColumnFlags_WidthFixed, indexColumnWidth );
+            ImGui::TableSetupColumn( "Statistic", ImGuiTableColumnFlags_NoHide | ImGuiTableColumnFlags_NoReorder | ImGuiTableColumnFlags_WidthFixed, labelColumnWidth );
 
-            ImGui::TableSetupColumn( "Distance", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Clusters", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
+            for ( uint32_t lodIndex = 0; lodIndex < numLODs; ++lodIndex )
+            {
+                InlineString columnName( InlineString::CtorSprintf(), "LOD %d", lodIndex );
+                ImGui::TableSetupColumn( columnName.c_str(), ImGuiTableColumnFlags_NoReorder | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
+            }
 
-            #if 0 // TODO: MeshStatistics will be reworked
-            ImGui::TableSetupColumn( "Cluster utilization Min", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Cluster utilization Max", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Cluster utilization Avg", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Cluster utilization Median", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Cluster Vtx overhead", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Vtx triangle reuse", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Vtx compression min accuracy", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            ImGui::TableSetupColumn( "Vtx compression avg accuracy", ImGuiTableColumnFlags_AngledHeader | ImGuiTableColumnFlags_WidthFixed, dataColumnWidth );
-            #endif
-
-            ImGui::TableSetupScrollFreeze( 0, 1 );
-            ImGui::TableAngledHeadersRow();
+            ImGui::TableSetupScrollFreeze( 1, 1 );
+            ImGui::TableHeadersRow();
 
             //-------------------------------------------------------------------------
 
-            TArrayView<float const> lodDistance = pMesh->GetLODDistances();
-            for ( uint32_t lodIndex = 0; lodIndex < lodDistance.size(); ++lodIndex )
+            ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted( "Distance" );
+
+            for ( uint32_t lodIndex = 0; lodIndex < numLODs; ++lodIndex )
+            {
+                ImGui::TableNextColumn();
+                ImGui::Text( "%.2f", lodDistance[lodIndex] );
+            }
+
+            //-------------------------------------------------------------------------
+
+            auto const DrawStatisticRow = [&] ( char const* label, char const* format, auto&& getValue )
             {
                 ImGui::TableNextRow();
 
                 ImGui::TableNextColumn();
-                ImGui::Text( "%d", lodIndex );
+                ImGui::TextUnformatted( label );
 
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f", lodDistance[lodIndex] );
+                for ( uint32_t lodIndex = 0; lodIndex < numLODs; ++lodIndex )
+                {
+                    ImGui::TableNextColumn();
+                    ImGui::Text( format, getValue( pMesh->GetStatistics( lodIndex ) ) );
+                }
+            };
 
-                #if 0 // TODO: MeshStatistics will be reworked
-                ImGui::TableNextColumn();
-                ImGui::Text( "%i", lod.m_numClusters );
+            DrawStatisticRow( "Clusters", "%u", [] ( MeshStatistics const& stats ) { return stats.m_numClusters; } );
 
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_minimumClusterUtilization * 100.0F );
+            DrawStatisticRow( "Cluster utilization Min", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_minimumClusterUtilization * 100.0F; } );
+            DrawStatisticRow( "Cluster utilization Max", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_maximumClusterUtilization * 100.0F; } );
+            DrawStatisticRow( "Cluster utilization Avg", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_averageClusterUtilization * 100.0F; } );
+            DrawStatisticRow( "Cluster utilization Median", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_medianClusterUtilization * 100.0F; } );
+            DrawStatisticRow( "Cluster Vtx overhead", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_clusterVertexOverhead * 100.0F; } );
+            DrawStatisticRow( "Vtx triangle reuse", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_vertexTriangleReuse * 100.0F; } );
+            DrawStatisticRow( "Vtx compression min accuracy", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_minimumCompressionAccuracy * 100.0F; } );
+            DrawStatisticRow( "Vtx compression avg accuracy", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_averageCompressionAccuracy * 100.0F; } );
+            DrawStatisticRow( "Compression ratio", "%.2f%%", [] ( MeshStatistics const& stats ) { return stats.m_compressionRatio * 100.0F; } );
 
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_maximumClusterUtilization * 100.0F );
+            DrawStatisticRow( "Position bits X min", "%u", [] ( MeshStatistics const& stats ) { return stats.m_minimumPositionBitsPerAxisX; } );
+            DrawStatisticRow( "Position bits X max", "%u", [] ( MeshStatistics const& stats ) { return stats.m_maximumPositionBitsPerAxisX; } );
+            DrawStatisticRow( "Position bits X avg", "%.1f", [] ( MeshStatistics const& stats ) { return stats.m_averagePositionBitsPerAxisX; } );
+            DrawStatisticRow( "Position bits X median", "%.1f", [] ( MeshStatistics const& stats ) { return stats.m_medianPositionBitsPerAxisX; } );
 
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_averageClusterUtilization * 100.0F );
+            DrawStatisticRow( "Position bits Y min", "%u", [] ( MeshStatistics const& stats ) { return stats.m_minimumPositionBitsPerAxisY; } );
+            DrawStatisticRow( "Position bits Y max", "%u", [] ( MeshStatistics const& stats ) { return stats.m_maximumPositionBitsPerAxisY; } );
+            DrawStatisticRow( "Position bits Y avg", "%.1f", [] ( MeshStatistics const& stats ) { return stats.m_averagePositionBitsPerAxisY; } );
+            DrawStatisticRow( "Position bits Y median", "%.1f", [] ( MeshStatistics const& stats ) { return stats.m_medianPositionBitsPerAxisY; } );
 
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_medianClusterUtilization * 100.0F );
-
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_clusterVertexOverhead * 100.0F );
-
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_vertexTriangleReuse * 100.0F );
-
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_minimumCompressionAccuracy * 100.0F );
-
-                ImGui::TableNextColumn();
-                ImGui::Text( "%.2f%%", pMesh->GetStatistics( lodIndex ).m_averageCompressionAccuracy * 100.0F );
-                #endif
-            }
+            DrawStatisticRow( "Position bits Z min", "%u", [] ( MeshStatistics const& stats ) { return stats.m_minimumPositionBitsPerAxisZ; } );
+            DrawStatisticRow( "Position bits Z max", "%u", [] ( MeshStatistics const& stats ) { return stats.m_maximumPositionBitsPerAxisZ; } );
+            DrawStatisticRow( "Position bits Z avg", "%.1f", [] ( MeshStatistics const& stats ) { return stats.m_averagePositionBitsPerAxisZ; } );
+            DrawStatisticRow( "Position bits Z median", "%.1f", [] ( MeshStatistics const& stats ) { return stats.m_medianPositionBitsPerAxisZ; } );
 
             ImGui::EndTable();
         }

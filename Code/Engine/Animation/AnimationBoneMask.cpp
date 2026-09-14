@@ -276,6 +276,7 @@ namespace EE::Animation
         if ( weightList.GetNumWeights() == 0 )
         {
             ResetWeights( 1.0f );
+            return;
         }
 
         // Create intermediate weights

@@ -22,39 +22,7 @@ namespace EE::EntityModel
         // Sanitize collection
         //-------------------------------------------------------------------------
 
-        bool const isCompilingForPackagedBuild = ctx.IsCompilingForPackagedBuild();
-        TVector<EntityDescriptor>& descriptors = map.GetMutableEntityDescriptors();
-        for ( int32_t e = int32_t( descriptors.size() ) - 1; e >= 0; e-- )
-        {
-            // Remove invalid and dev-only components
-            for ( int32_t c = int32_t( descriptors[e].m_components.size() ) - 1; c >= 0; c-- )
-            {
-                ComponentDescriptor& componentDesc = descriptors[e].m_components[c];
-                TypeSystem::TypeInfo const* pComponentTypeInfo = ctx.m_typeRegistry.GetTypeInfo( componentDesc.m_typeID );
-
-                if ( pComponentTypeInfo == nullptr || ( isCompilingForPackagedBuild && pComponentTypeInfo->m_isForDevelopmentUseOnly ) )
-                {
-                    descriptors[e].m_components.erase( descriptors[e].m_components.begin() + c );
-                }
-            }
-
-            // Remove invalid and dev-only systems
-            for ( int32_t s = int32_t( descriptors[e].m_systems.size() ) - 1; s >= 0; s-- )
-            {
-                SystemDescriptor& systemDesc = descriptors[e].m_systems[s];
-                TypeSystem::TypeInfo const* pSystemTypeInfo = ctx.m_typeRegistry.GetTypeInfo( systemDesc.m_typeID );
-                if ( pSystemTypeInfo == nullptr || ( isCompilingForPackagedBuild && pSystemTypeInfo->m_isForDevelopmentUseOnly ) )
-                {
-                    descriptors[e].m_systems.erase( descriptors[e].m_systems.begin() + s );
-                }
-            }
-
-            // Remove any empty entities
-            if ( ( descriptors[e].m_components.size() + descriptors[e].m_systems.size() ) == 0 )
-            {
-                descriptors.erase( descriptors.begin() + e );
-            }
-        }
+        map.RemoveInvalidComponentsAndSystems( ctx.m_typeRegistry, ctx.GetLog(), ctx.IsCompilingForShippingBuild() );
 
         //-------------------------------------------------------------------------
         // Component Modifications

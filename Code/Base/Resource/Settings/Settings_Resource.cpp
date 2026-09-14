@@ -40,19 +40,19 @@ namespace EE::Resource
 
             m_sourceDataDirectoryPath.MakeIntoDirectoryPath();
 
-            // Packaged Build Path
+            // Shipping Build Path
             //-------------------------------------------------------------------------
 
-            m_packagedBuildCompiledResourceDirectoryPath = m_compiledResourceDirectoryPath.GetParentDirectory().GetParentDirectory();
-            m_packagedBuildCompiledResourceDirectoryPath += m_packagedBuildName.c_str();
-            m_packagedBuildCompiledResourceDirectoryPath += m_compiledResourceDirectoryName.c_str();
+            m_shippingBuildCompiledResourceDirectoryPath = m_compiledResourceDirectoryPath.GetParentDirectory().GetParentDirectory();
+            m_shippingBuildCompiledResourceDirectoryPath += m_shippingBuildName.c_str();
+            m_shippingBuildCompiledResourceDirectoryPath += m_compiledResourceDirectoryName.c_str();
 
-            if ( !m_packagedBuildCompiledResourceDirectoryPath.IsValid() )
+            if ( !m_shippingBuildCompiledResourceDirectoryPath.IsValid() )
             {
                 EE_LOG_ERROR( LogCategory::Resource, "Resource Settings", "Invalid source data path: %s", m_sourceDataDirectoryPath.c_str() );
             }
 
-            m_packagedBuildCompiledResourceDirectoryPath.MakeIntoDirectoryPath();
+            m_shippingBuildCompiledResourceDirectoryPath.MakeIntoDirectoryPath();
 
             // Compiled Resource DB
             //-------------------------------------------------------------------------

@@ -134,6 +134,12 @@ namespace EE::Animation
         // Destroy an allocated cached pose buffer - frees the ID to be reused
         void DestroyCachedPose( CachedPoseID cachedPoseID );
 
+        // Fill an existing cached pose buffer
+        void FillCachedPoseBuffer( CachedPoseID cachedPoseID, Pose const &primaryPose, TVector<Pose const *> const &secondaryPoses );
+
+        // Clear an existing cached pose buffer
+        void ClearCachedPoseBuffer( CachedPoseID cachedPoseID );
+
         #if EE_DEVELOPMENT_TOOLS
         // Ensure that we have a valid cached pose buffer with the given ID. Needed for restoring from a recorded state
         void EnsureCachedPoseExists( CachedPoseID cachedPoseID );

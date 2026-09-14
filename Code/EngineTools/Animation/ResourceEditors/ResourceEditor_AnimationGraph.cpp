@@ -1001,7 +1001,7 @@ namespace EE::Animation
         //-------------------------------------------------------------------------
 
         m_userContext.m_pTypeRegistry = m_pToolsContext->m_pTypeRegistry;
-        m_userContext.m_pDataFileSystem = m_pToolsContext->m_pDataFileSystem;
+        m_userContext.m_pDataFileRegistry = m_pToolsContext->m_pDataFileRegistry;
         m_userContext.m_pCategorizedNodeTypes = &m_categorizedNodeTypes.GetRootCategory();
         m_userContext.m_pVariationHierarchy = nullptr;
         m_userContext.m_pParameters = &m_parameters;
@@ -6091,7 +6091,7 @@ namespace EE::Animation
             //-------------------------------------------------------------------------
 
             ResourceID const referencedGraphDefinitionResourceID = Variation::GetGraphResourceID( referencedGraphResourceID );
-            FileSystem::Path const referencedGraphFilePath = referencedGraphDefinitionResourceID.GetFileSystemPath( m_pToolsContext->m_pDataFileSystem->GetSourceDataDirectoryPath() );
+            FileSystem::Path const referencedGraphFilePath = referencedGraphDefinitionResourceID.GetFileSystemPath( m_pToolsContext->m_pDataFileRegistry->GetSourceDataDirectoryPath() );
             if ( !referencedGraphFilePath.IsValid() )
             {
                 ShowNotifyDialog( EE_ICON_EXCLAMATION" Error", "Reflect Parameters Failed: Invalid !" );
@@ -6750,7 +6750,7 @@ namespace EE::Animation
         virtual void PopulateOptionsList() override
         {
             ResourceID const& skeletonResourceID = m_pGraphEditor->GetEditedGraphData()->GetActiveVariationSkeleton();
-            auto pSkeletonFileEntry = m_pGraphEditor->m_pToolsContext->m_pDataFileSystem->GetFileEntry( skeletonResourceID );
+            auto pSkeletonFileEntry = m_pGraphEditor->m_pToolsContext->m_pDataFileRegistry->GetFileEntry( skeletonResourceID );
             if ( pSkeletonFileEntry != nullptr )
             {
                 SkeletonResourceDescriptor const* pSkeletonDescriptor = Cast<SkeletonResourceDescriptor>( pSkeletonFileEntry->m_pDataFile );

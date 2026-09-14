@@ -16,15 +16,15 @@ EE_BEGIN_SHADER_TYPES_NAMESPACE
 struct HLSL_ALIGN_STRUCT MeshInstanceInitializeCommand
 {
     uint                    m_instanceID;
-    uint                    m_instanceFlags;
-    uint16_t                m_meshIndex;
-    uint16_t                m_padding;
+    uint                    m_instanceHidden           : 1;
+    uint                    m_reservedFlags            : 31;
+    uint16_t                m_meshBuffer;
+    uint16_t                m_shaderIndex;
     uint                    m_rootIndex;
-    uint                    m_meshVertexStride;
+    uint                    m_clusterToInstanceOffset;
     uint                    m_lodMask;
     uint                    m_shaderParametersOffsetIn32ByteBlocks;
-    BufferHandle            m_clusterVertexBuffer;
-    BufferHandle            m_clusterTriangleBuffer;
+    uint                    m_numClusters;
 };
 
 HLSL_STATIC_ASSERT( sizeof( MeshInstanceInitializeCommand ) == 32, "Expected exactly 32 bytes" );
@@ -34,7 +34,7 @@ struct HLSL_ALIGN_STRUCT MeshInstanceTransformUpdateCommand
     uint                    m_instanceID;
     float3x4                m_transform;
     
-    uint                    m_padding0;
+    uint                    m_shaderIndex;
     uint                    m_padding1;
     uint                    m_padding2;
 };

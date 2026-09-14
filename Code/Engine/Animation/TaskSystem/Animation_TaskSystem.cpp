@@ -380,6 +380,33 @@ namespace EE::Animation
         m_posePool.DestroyCachedPoseBuffer( cachedPoseID );
     }
 
+    void TaskSystem::FillCachedPoseBuffer( CachedPoseID cachedPoseID, Pose const &primaryPose, TVector<Pose const *> const &secondaryPoses )
+    {
+        PoseBuffer* pBuffer = m_posePool.GetCachedPoseBuffer( cachedPoseID );
+        EE_ASSERT( pBuffer != nullptr );
+        EE_ASSERT( pBuffer->GetPrimarySkeleton() == primaryPose.GetSkeleton() );
+
+        // Set primary pose
+        pBuffer->GetPrimaryPose()->CopyFrom( primaryPose );
+
+        // Fill whatever secondary poses match
+        for ( Pose const *pSecondaryPose : secondaryPoses )
+        {
+            auto pSecondaryPoseBuffer = pBuffer->GetSecondaryPose( pSecondaryPose->GetSkeleton() );
+            if ( pSecondaryPoseBuffer != nullptr )
+            {
+                pSecondaryPoseBuffer->CopyFrom( pSecondaryPose );
+            }
+        }
+    }
+
+    void TaskSystem::ClearCachedPoseBuffer( CachedPoseID cachedPoseID )
+    {
+        PoseBuffer *pBuffer = m_posePool.GetCachedPoseBuffer( cachedPoseID );
+        EE_ASSERT( pBuffer != nullptr );
+        pBuffer->ResetPose( Pose::Init::ReferencePose );
+    }
+
     //-------------------------------------------------------------------------
 
     void TaskSystem::SerializeTasks( TaskSerializationContext const& taskSerializationContext, Blob& outSerializedTopologyData, Blob& outSerializedTaskData ) const

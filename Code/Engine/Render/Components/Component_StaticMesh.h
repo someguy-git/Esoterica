@@ -3,6 +3,7 @@
 #include "Component_RenderMesh.h"
 #include "Engine/Entity/EntityWorldSystemSignal.h"
 #include "Engine/Render/RenderMesh.h"
+#include "Base/Types/Arrays.h"
 
 //-------------------------------------------------------------------------
 
@@ -30,7 +31,7 @@ namespace EE::Render
         // Mesh Data
         //-------------------------------------------------------------------------
 
-        virtual bool HasMeshResourceSet() const override{ return m_mesh.IsSet(); }
+        virtual bool HasMeshResourceSet() const override { return m_mesh.IsSet(); }
 
         inline void SetMesh( ResourceID meshResourceID )
         {
@@ -69,18 +70,11 @@ namespace EE::Render
 
         //-------------------------------------------------------------------------
 
-        inline uint32_t ComputeInstanceDataSizeInBytes()
-        {
-            return MeshComponent::ComputeInstanceDataSizeInBytes( GetMesh() );
-        }
-
         inline void WriteInstanceData( TArrayView<uint32_t> bufferData_WriteCombined ) const
         {
             EE_ASSERT( m_meshInstanceRootProxy.IsValid() );
-            MeshComponent::WriteInstanceData( GetMesh(), m_meshInstanceProxy.m_instanceHandle, {}, bufferData_WriteCombined );
+            MeshComponent::WriteInstanceData( GetMesh(), ~0U, bufferData_WriteCombined );
         }
-
-        void QueueInitializeMeshInstance( DeviceRenderWorld* pDeviceRenderWorld );
 
     private:
 
@@ -94,11 +88,5 @@ namespace EE::Render
         //-------------------------------------------------------------------------
 
         TEntityWorldSystemSignal<StaticMeshComponent>   m_instanceDataUpdateSignal;
-
-        // Internal renderer data
-        //-------------------------------------------------------------------------
-
-        MeshInstanceProxy                               m_meshInstanceRootProxy = {};
-        MeshInstanceProxy                               m_meshInstanceProxy = {};
     };
 }

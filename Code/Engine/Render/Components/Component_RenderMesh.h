@@ -4,6 +4,8 @@
 #include "Engine/Render/RenderViewLayer.h"
 #include "Engine/Render/RenderMesh.h"
 #include "Engine/Render/RenderMaterial.h"
+#include "Engine/Render/RenderProxies.h"
+#include "Base/Render/RHI.h"
 #include "Engine/Entity/EntitySpatialComponent.h"
 
 //-------------------------------------------------------------------------
@@ -12,12 +14,15 @@ namespace EE::Render
 {
     class Material;
     class Mesh;
+    class DeviceRenderWorld;
 
     //-------------------------------------------------------------------------
 
     class EE_ENGINE_API MeshComponent : public SpatialEntityComponent
     {
         EE_ENTITY_COMPONENT( MeshComponent );
+
+        friend class RenderWorldSystem;
 
     public:
 
@@ -66,6 +71,22 @@ namespace EE::Render
 
             EE_REFLECT( ShowAsStaticArray );
             TVector<MaterialOverride>               m_materialOverrides;
+        };
+
+        //-------------------------------------------------------------------------
+
+        struct SubmeshToMeshInstance                                                    // TODO: Not everything in this struct is needed all the time, we can split it potentially
+        {
+            RHI::Buffer*                m_pMeshBuffer = nullptr;
+            uint32_t                    m_submeshIndex = ~0U;                           // This can potentially be removed
+            int32_t                     m_shaderIndex = -1;
+            uint32_t                    m_numClusters = 0;
+            uint32_t                    m_proxyIndex = ~0U;
+            uint32_t                    m_instanceIndex = ~0U;
+            uint32_t                    m_clusterToInstanceOffset = ~0U;
+            uint32_t                    m_shaderParametersOffsetIn32ByteBlocks = 0;
+            uint8_t                     m_lodMask = 0;
+            bool                        m_instanceHidden = false;
         };
 
     public:
@@ -143,30 +164,62 @@ namespace EE::Render
 
     protected:
 
-        virtual void OnRenderInstanceDataUpdated() = 0;
-
-    protected:
-
-        uint32_t ComputeInstanceDataSizeInBytes( Mesh const* pMeshResource ) const;
-        void WriteInstanceData( Mesh const* pMeshResource, HandleAllocator<uint32_t>::Handle meshInstanceHandle, HandleAllocator<uint32_t>::Handle bonesHandle, TArrayView<uint32_t> bufferData_WriteCombined ) const;
+        //-------------------------------------------------------------------------
 
         void ValidateAndFixSubmeshSettings();
 
     protected:
 
+        //-------------------------------------------------------------------------
+
+        virtual void OnRenderInstanceDataUpdated() = 0;
+
+    protected:
+
+        // Internal renderer functions
+        //-------------------------------------------------------------------------
+
+        void AllocateMeshInstanceProxies( DeviceRenderWorld* pDeviceRenderWorld );
+        void QueueMeshInstanceInitialize( DeviceRenderWorld* pDeviceRenderWorld, Material const* pPlaceholderMaterial );
+
+        void WriteInstanceData( Mesh const* pMeshResource, uint32_t boneOffset, TArrayView<uint32_t> bufferData_WriteCombined ) const;
+        void WriteMeshInstanceRootTransform();
+        void WriteMeshInstanceLocalTransforms();
+
+        void ResolveSubmeshMaterials( Material const* pPlaceholderMaterial );
+        void ResolveSubmeshProxyData( uint32_t numShaderPools );
+
+        void UpdateSubmeshVisibility();
+
+        void ValidateSubmeshInstanceData( Material const* pPlaceholderMaterial ) const;
+
+    protected:
+
+        //-------------------------------------------------------------------------
+
         EE_REFLECT();
-        bool                                    m_componentHidden = false;
+        bool                                            m_componentHidden = false;
 
         EE_REFLECT( Category = "Mesh" );
-        TBitFlags<ViewLayer>                    m_viewLayers = TBitFlags<ViewLayer>( ViewLayer::ShadowMap, ViewLayer::ForwardShading );
+        TBitFlags<ViewLayer>                            m_viewLayers = TBitFlags<ViewLayer>( ViewLayer::ShadowMap, ViewLayer::ForwardShading );
 
         EE_REFLECT( Category = "Mesh" );
-        int32_t                                 m_forcedMinLOD = -1;
+        int32_t                                         m_forcedMinLOD = -1;
 
         EE_REFLECT( Category = "Mesh" );
-        int32_t                                 m_forcedLOD = -1;
+        int32_t                                         m_forcedLOD = -1;
 
         EE_REFLECT( Category = "Submeshes" );
-        SubmeshSettings                         m_submeshSettings;
+        SubmeshSettings                                 m_submeshSettings;
+
+    protected:
+
+        // Internal renderer data
+        //-------------------------------------------------------------------------
+
+        TVector<SubmeshToMeshInstance>                  m_submeshToMeshInstance = {};
+
+        MeshInstanceRootProxy                           m_meshInstanceRootProxy = {};
+        TVector<TPair<uint32_t, MeshInstanceProxy>>     m_meshInstanceProxies = {};
     };
 }

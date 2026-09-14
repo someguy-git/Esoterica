@@ -30,7 +30,7 @@ namespace EE::Render
         RHI::DestroyTexture( pRenderSystem->GetContextRHI(), eastl::move( m_depthTargetArray ) );
     }
 
-    void CascadedShadowPass::UpdateDeviceResources( RenderSystem* pRenderSystem, TArrayView<uint32_t const> clusterCapacity, uint32_t numMeshInstancePages )
+    void CascadedShadowPass::UpdateDeviceResources( RenderSystem* pRenderSystem, DeviceRenderWorld const& deviceRenderWorld )
     {
         EE_PROFILE_FUNCTION_RENDER();
 
@@ -44,7 +44,7 @@ namespace EE::Render
             depthParameters.m_width = m_pRenderSettings->m_cascadedShadowResolution;
             depthParameters.m_height = m_pRenderSettings->m_cascadedShadowResolution;
             depthParameters.m_arrayLayers = uint32_t( NumShadowCascades );
-            depthParameters.m_format = RHI::DataFormat::D32_SFloat;
+            depthParameters.m_format = RHI::DataFormat::D16_UNorm;
             depthParameters.m_descriptorTypes = TBitFlags<RHI::DescriptorTypeFlags>( RHI::DescriptorTypeFlags::RenderTarget, RHI::DescriptorTypeFlags::Texture );
             depthParameters.m_debugName.sprintf( "CascadedShadowPass Shadow Depth Target %i Cascades", NumShadowCascades );
 
@@ -53,7 +53,7 @@ namespace EE::Render
 
         for ( size_t cascadeIndex = 0; cascadeIndex < NumShadowCascades; ++cascadeIndex )
         {
-            m_renderViews[cascadeIndex].UpdateDeviceResources( pRenderSystem, clusterCapacity, numMeshInstancePages );
+            m_renderViews[cascadeIndex].UpdateDeviceResources( pRenderSystem, deviceRenderWorld );
         }
     }
 
@@ -315,7 +315,7 @@ namespace EE::Render
                 {
                     EE_RHI_COMMAND_BUFFER_PROFILE_SCOPE( pCommandBuffer, shaderPipelineBucket.m_shaderName.data() );
 
-                    RHI::CmdSetPipeline( pCommandBuffer, shaderPipelineBucket.m_pDepthOnlyPipeline );
+                    RHI::CmdSetPipeline( pCommandBuffer, shaderPipelineBucket.m_pDepthOnlyPipeline_LowPrecision );
                     RHI::CmdSetRootConstants( pCommandBuffer, 0, nullptr, sizeof( ShaderTypes::DrawRootConstants ) );
                     {
                         MaterialShaderRenderBucket const& renderBucket = renderViewBucket.m_opaqueBucket;
@@ -331,7 +331,7 @@ namespace EE::Render
                 {
                     EE_RHI_COMMAND_BUFFER_PROFILE_SCOPE( pCommandBuffer, shaderPipelineBucket.m_shaderName.data() );
 
-                    RHI::CmdSetPipeline( pCommandBuffer, shaderPipelineBucket.m_pDepthOnlyPipeline );
+                    RHI::CmdSetPipeline( pCommandBuffer, shaderPipelineBucket.m_pDepthOnlyAlphaTestPipeline_LowPrecision );
                     RHI::CmdSetRootConstants( pCommandBuffer, 0, nullptr, sizeof( ShaderTypes::DrawRootConstants ) );
                     {
                         MaterialShaderRenderBucket const& renderBucket = renderViewBucket.m_alphaTestBucket;

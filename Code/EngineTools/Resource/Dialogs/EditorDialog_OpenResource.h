@@ -1,6 +1,6 @@
 #pragma once
 #include "EngineTools/Core/DialogManager.h"
-#include "EngineTools/FileSystem/DataFileSystem.h"
+#include "EngineTools/FileSystem/DataFileRegistry.h"
 
 //-------------------------------------------------------------------------
 
@@ -33,8 +33,8 @@ namespace EE::Resource
 
         ToolsContext const*                         m_pToolsContext = nullptr;
         ImGuiX::FilterWidget                        m_filter;
-        TVector<DataFileSystem::FileInfo const*>      m_files;
-        TVector<DataFileSystem::FileInfo const*>      m_filteredFiles;
+        TVector<DataFileRegistry::FileInfo const*>    m_files;
+        TVector<DataFileRegistry::FileInfo const*>    m_filteredFiles;
         String                                      m_buffer;
     };
 }

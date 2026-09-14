@@ -63,22 +63,20 @@ namespace EE::Render
         m_renderViewBuckets.clear();
     }
 
-    void DeviceRenderView::UpdateDeviceResources( RenderSystem* pRenderSystem, TArrayView<uint32_t const> clusterCapacityPerShader, uint32_t numMeshInstancePages )
+    void DeviceRenderView::UpdateDeviceResources( RenderSystem* pRenderSystem, DeviceRenderWorld const& deviceRenderWorld )
     {
         size_t renderBucketIndex = 0;
         for ( size_t shaderIndex = 0; shaderIndex < m_renderViewBuckets.size(); ++shaderIndex )
         {
             DeviceRenderViewBucket& bucket = m_renderViewBuckets[shaderIndex];
 
-            bucket.ForEachRenderBucket( [&renderBucketIndex, shaderIndex, numMeshInstancePages, &clusterCapacityPerShader, pRenderSystem] ( MaterialShaderRenderBucket& renderBucket )
+            bucket.ForEachRenderBucket( [&renderBucketIndex, shaderIndex, pRenderSystem, &deviceRenderWorld] ( MaterialShaderRenderBucket& renderBucket )
             {
-                uint32_t const clustersCapacity = clusterCapacityPerShader[shaderIndex];
+                uint32_t const clustersCapacity = deviceRenderWorld.GetClusterCapacity( shaderIndex );
+                EE_ASSERT( clustersCapacity > 0 );
 
-                // Cluster culling emits one draw argument per ( culling group, view, sub-bucket ).
-                // Culling groups span 128 cluster records of a single shader whole record stream ( union across view layers ), and a view records can be spread across every one of those groups.
-                // So a bucket can receive up to clustersCapacity / 128 + numMeshInstancePages + 1 draw arguments.
-                uint32_t const numMaxDrawArguments = ( clustersCapacity + 127 ) / 128 + numMeshInstancePages + 1;
-                size_t const drawArgumentBufferSizeWorstCase = numMaxDrawArguments * sizeof( ShaderTypes::DrawArgument );
+                uint32_t const maxNumDrawArguments = ( clustersCapacity + RHI::Limits::MaxDispatchSize - 1 ) / RHI::Limits::MaxDispatchSize;
+                size_t const drawArgumentBufferSizeWorstCase = maxNumDrawArguments * sizeof( ShaderTypes::DrawArgument );
 
                 //-------------------------------------------------------------------------
 

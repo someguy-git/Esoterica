@@ -96,9 +96,8 @@ namespace EE::Render
         //-------------------------------------------------------------------------
 
         AABB ComputeAABB() const;
-        uint32_t BuildAndAppendClusters( Blob& clusterVertices, size_t clusterVertexStride, TAlignedVector<uint32_t>& clusterTriangles, Blob& clusters ) const;
 
-        void BuildAndAppendGeometry( Geometry& geometry ) const;
+        Geometry BuildGeometry() const;
 
         //-------------------------------------------------------------------------
 
@@ -110,6 +109,8 @@ namespace EE::Render
         inline TAlignedVector<uint32_t> const& GetIndices() const { return m_indices; }
 
     private:
+
+        uint32_t BuildClusters( AlignedBlob& packedMeshData ) const;
 
         uint32_t                    m_numTextureCoordinateAttributes = 0;
         uint32_t                    m_numColorAttributes = 0;

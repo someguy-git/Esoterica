@@ -1,4 +1,5 @@
 #include "Component_RenderMesh.h"
+#include "Engine/Render/Device/DeviceRenderWorld.h"
 #include "Engine/Render/RenderMesh.h"
 #include "Engine/Render/Shaders/MeshInstance.esh"
 
@@ -91,44 +92,6 @@ namespace EE::Render
         }
 
         return StringID();
-    }
-
-    void MeshComponent::ValidateAndFixSubmeshSettings()
-    {
-        if ( !HasMeshResourceSet() )
-        {
-            m_submeshSettings.Clear();
-        }
-        else
-        {
-            if ( IsMeshLoaded() )
-            {
-                int32_t const numSubmeshes = GetMeshResource()->GetNumSubmeshes();
-
-                // Fill all resource IDs (and remove any invalid ones)
-                for ( int32_t i = int32_t( m_submeshSettings.m_materialOverrides.size() ) - 1; i >= 0; i-- )
-                {
-                    int16_t const submeshIdx = m_submeshSettings.m_materialOverrides[i].m_submeshIdx;
-                    if ( submeshIdx < 0 || submeshIdx >= numSubmeshes )
-                    {
-                        m_submeshSettings.m_materialOverrides.erase_unsorted( m_submeshSettings.m_materialOverrides.begin() + i );
-                    }
-                }
-
-                // Fill all visibility state
-                for ( int32_t i = int32_t( m_submeshSettings.m_hiddenSubmeshes.size() ) - 1; i >= 0; i-- )
-                {
-                    if ( m_submeshSettings.m_hiddenSubmeshes[i] < 0 || m_submeshSettings.m_hiddenSubmeshes[i] >= numSubmeshes )
-                    {
-                        m_submeshSettings.m_hiddenSubmeshes.erase_unsorted( m_submeshSettings.m_hiddenSubmeshes.begin() + i );
-                    }
-                }
-            }
-            else // Mesh not loaded
-            {
-                // Dont mess with the settings as we cannot validate anything...
-            }
-        }
     }
 
     //-------------------------------------------------------------------------
@@ -282,43 +245,170 @@ namespace EE::Render
         return m_forcedLOD;
     }
 
-    //-------------------------------------------------------------------------
-
-    uint32_t MeshComponent::ComputeInstanceDataSizeInBytes( Mesh const* pMeshResource ) const
+    void MeshComponent::ValidateAndFixSubmeshSettings()
     {
-        uint32_t const numInstances = uint32_t( pMeshResource->GetSubmeshLocalTransforms().size() );
-        uint32_t baseSize = sizeof( ShaderTypes::MeshInstanceRoot ) / 4;
+        if ( !HasMeshResourceSet() )
+        {
+            m_submeshSettings.Clear();
+        }
+        else
+        {
+            if ( IsMeshLoaded() )
+            {
+                int32_t const numSubmeshes = GetMeshResource()->GetNumSubmeshes();
 
-        baseSize += ( ( numInstances + 31 ) / 32 );
-        baseSize += uint32_t( pMeshResource->GetLODDistances().size() );
-        baseSize += 3; // Compressed world AABB ( 12-bit shared exponent + six 14-bit mantissas )
+                // Fill all resource IDs (and remove any invalid ones)
+                for ( int32_t i = int32_t( m_submeshSettings.m_materialOverrides.size() ) - 1; i >= 0; i-- )
+                {
+                    int16_t const submeshIdx = m_submeshSettings.m_materialOverrides[i].m_submeshIdx;
+                    if ( submeshIdx < 0 || submeshIdx >= numSubmeshes )
+                    {
+                        m_submeshSettings.m_materialOverrides.erase_unsorted( m_submeshSettings.m_materialOverrides.begin() + i );
+                    }
+                }
 
-        return baseSize * 4;
+                // Fill all visibility state
+                for ( int32_t i = int32_t( m_submeshSettings.m_hiddenSubmeshes.size() ) - 1; i >= 0; i-- )
+                {
+                    if ( m_submeshSettings.m_hiddenSubmeshes[i] < 0 || m_submeshSettings.m_hiddenSubmeshes[i] >= numSubmeshes )
+                    {
+                        m_submeshSettings.m_hiddenSubmeshes.erase_unsorted( m_submeshSettings.m_hiddenSubmeshes.begin() + i );
+                    }
+                }
+            }
+            else // Mesh not loaded
+            {
+                // Dont mess with the settings as we cannot validate anything...
+            }
+        }
     }
 
-    void MeshComponent::WriteInstanceData( Mesh const* pMeshResource, HandleAllocator<uint32_t>::Handle meshInstanceHandle, HandleAllocator<uint32_t>::Handle bonesHandle, TArrayView<uint32_t> bufferData_WriteCombined ) const
+    //-------------------------------------------------------------------------
+
+    void MeshComponent::AllocateMeshInstanceProxies( DeviceRenderWorld* pDeviceRenderWorld )
+    {
+        EE_ASSERT( pDeviceRenderWorld != nullptr );
+        EE_ASSERT( m_meshInstanceRootProxy.IsValid() );
+        EE_ASSERT( m_meshInstanceProxies.empty() );
+        EE_ASSERT( !m_submeshToMeshInstance.empty() );
+
+        uint32_t const numShaderPools = pDeviceRenderWorld->GetNumMeshInstanceShaderPools();
+
+        //-------------------------------------------------------------------------
+
+        TVector<uint32_t> numSubmeshesPerShader( numShaderPools, 0 );
+        TVector<uint32_t> uniqueShaderIndices;
+        uniqueShaderIndices.reserve( m_submeshToMeshInstance.size() );
+        for ( SubmeshToMeshInstance const& submeshToMeshInstance : m_submeshToMeshInstance )
+        {
+            uint32_t const shaderIndex = uint32_t( submeshToMeshInstance.m_shaderIndex );
+            EE_ASSERT( shaderIndex < numShaderPools );
+
+            if ( numSubmeshesPerShader[shaderIndex]++ == 0 )
+            {
+                uniqueShaderIndices.push_back( shaderIndex );
+            }
+        }
+
+        m_meshInstanceProxies.reserve( uniqueShaderIndices.size() );
+
+        //-------------------------------------------------------------------------
+
+        TVector<uint32_t> numClustersPerInstance( m_submeshToMeshInstance.size() );
+        TVector<uint32_t> numClustersPerInstanceOffsets( numShaderPools, 0 );
+
+        uint32_t submeshNumClustersOffset = 0;
+        for ( uint32_t shaderIndex : uniqueShaderIndices )
+        {
+            numClustersPerInstanceOffsets[shaderIndex] = submeshNumClustersOffset;
+            submeshNumClustersOffset += numSubmeshesPerShader[shaderIndex];
+        }
+        EE_ASSERT( submeshNumClustersOffset == m_submeshToMeshInstance.size() );
+
+        for ( SubmeshToMeshInstance const& submeshToMeshInstance : m_submeshToMeshInstance )
+        {
+            uint32_t const shaderIndex = uint32_t( submeshToMeshInstance.m_shaderIndex );
+            numClustersPerInstance[numClustersPerInstanceOffsets[shaderIndex]++] = submeshToMeshInstance.m_numClusters;
+        }
+
+        //-------------------------------------------------------------------------
+
+        uint32_t proxyNumClustersOffset = 0;
+        for ( uint32_t shaderIndex : uniqueShaderIndices )
+        {
+            uint32_t const numSubmeshesInShader = numSubmeshesPerShader[shaderIndex];
+
+            TArrayView<uint32_t const> proxyNumClustersPerInstance = TArrayView<uint32_t const>( numClustersPerInstance.data() + proxyNumClustersOffset, numSubmeshesInShader );
+
+            MeshInstanceProxy meshInstanceProxy = pDeviceRenderWorld->AllocateMeshInstance( shaderIndex, proxyNumClustersPerInstance );
+            m_meshInstanceProxies.emplace_back( TPair<uint32_t, MeshInstanceProxy>{ shaderIndex, eastl::move( meshInstanceProxy ) } );
+
+            proxyNumClustersOffset += numSubmeshesInShader;
+        }
+    }
+
+    void MeshComponent::QueueMeshInstanceInitialize( DeviceRenderWorld* pDeviceRenderWorld, Material const* pPlaceholderMaterial )
+    {
+        EE_ASSERT( pDeviceRenderWorld != nullptr );
+
+        if ( m_meshInstanceProxies.empty() )
+        {
+            EE_ASSERT( !m_meshInstanceRootProxy.IsValid() );
+            EE_ASSERT( pPlaceholderMaterial != nullptr );
+
+            m_meshInstanceRootProxy = pDeviceRenderWorld->AllocateMeshInstanceRoot();
+            ResolveSubmeshMaterials( pPlaceholderMaterial );
+            UpdateSubmeshVisibility();
+            AllocateMeshInstanceProxies( pDeviceRenderWorld );
+            ResolveSubmeshProxyData( pDeviceRenderWorld->GetNumMeshInstanceShaderPools() );
+        }
+        else
+        {
+            ValidateSubmeshInstanceData( pPlaceholderMaterial );
+            UpdateSubmeshVisibility();
+        }
+
+        //-------------------------------------------------------------------------
+
+        EE_ASSERT( m_meshInstanceRootProxy.IsValid() );
+        EE_ASSERT( !m_meshInstanceProxies.empty() );
+        EE_ASSERT( !m_submeshToMeshInstance.empty() );
+
+        for ( SubmeshToMeshInstance const& submeshToMeshInstance : m_submeshToMeshInstance )
+        {
+            pDeviceRenderWorld->QueueMeshInstanceInitialize
+            (
+                m_meshInstanceProxies[submeshToMeshInstance.m_proxyIndex].second,
+                m_meshInstanceRootProxy.m_instanceHandle.m_offset,
+                submeshToMeshInstance.m_pMeshBuffer,
+                submeshToMeshInstance.m_shaderParametersOffsetIn32ByteBlocks,
+                submeshToMeshInstance.m_numClusters,
+                submeshToMeshInstance.m_lodMask,
+                submeshToMeshInstance.m_instanceIndex,
+                submeshToMeshInstance.m_clusterToInstanceOffset,
+                submeshToMeshInstance.m_instanceHidden
+            );
+        }
+
+        //-------------------------------------------------------------------------
+
+        WriteMeshInstanceRootTransform();
+        WriteMeshInstanceLocalTransforms();
+    }
+
+    void MeshComponent::WriteInstanceData( Mesh const* pMeshResource, uint32_t boneOffset, TArrayView<uint32_t> bufferData_WriteCombined ) const
     {
         uint32_t numLODs = uint32_t( pMeshResource->GetLODDistances().size() );
         EE_ASSERT( numLODs <= 8 );
 
-        ShaderTypes::MeshInstanceRoot meshInstanceRoot = {};
+        alignas( 32 ) ShaderTypes::MeshInstanceRoot meshInstanceRoot = {};
         meshInstanceRoot.m_instanceHidden = !IsVisible();
 
         meshInstanceRoot.m_numLODs = numLODs;
 
-        meshInstanceRoot.m_firstInstance = meshInstanceHandle.m_offset;
-        meshInstanceRoot.m_numInstances = meshInstanceHandle.m_size;
-
-        if ( bonesHandle.IsValid() )
-        {
-            meshInstanceRoot.m_boneOffset = bonesHandle.m_offset;
-        }
-        else
-        {
-            meshInstanceRoot.m_boneOffset = ~0U;
-        }
-
         meshInstanceRoot.m_renderViewLayerFlags = m_viewLayers;
+
+        meshInstanceRoot.m_boneOffset = boneOffset;
 
         EE_ASSERT( m_forcedMinLOD <= 7 );
         EE_ASSERT( m_forcedLOD <= 7 );
@@ -326,8 +416,6 @@ namespace EE::Render
         meshInstanceRoot.m_forceMinLOD = uint32_t( Math::Max( 0, m_forcedMinLOD ) );
         meshInstanceRoot.m_forceLOD = uint32_t( Math::Max( 0, m_forcedLOD ) );
         meshInstanceRoot.m_useForcedLOD = ( m_forcedLOD >= 0 );
-
-        meshInstanceRoot.m_numSkinningAttributes = pMeshResource->GetGeometry()[0].GetNumSkinningAttributes();
 
         Matrix transformMatrix = GetWorldTransform().ToMatrix();
         float const globalUniformScale = GetWorldTransform().GetScale();
@@ -343,27 +431,204 @@ namespace EE::Render
         transformMatrix.GetRow( 2 ).StoreFloat3( meshInstanceRoot.m_rootTransform + 6 );
         transformMatrix.GetRow( 3 ).StoreFloat3( meshInstanceRoot.m_rootTransform + 9 );
 
-        std::memcpy( bufferData_WriteCombined.data(), &meshInstanceRoot, sizeof( ShaderTypes::MeshInstanceRoot ) );
+        AABB const worldAABB = GetWorldBounds().GetAABB();
+        meshInstanceRoot.SetWorldAABB( worldAABB.m_center, worldAABB.m_halfExtents, GetWorldTransform().GetTranslation().ToFloat3() );
 
-        // Write per-instance data
-        for ( uint32_t instanceIndex = 0; instanceIndex < meshInstanceRoot.m_numInstances; ++instanceIndex )
-        {
-            bool const instanceHidden = VectorContains( m_submeshSettings.m_hiddenSubmeshes, (int16_t) instanceIndex );
-            meshInstanceRoot.WriteInstanceHidden( bufferData_WriteCombined, instanceIndex, instanceHidden );
-        }
-
-        // Write per-LOD data
         TArrayView<float const> meshDataLODDistance = pMeshResource->GetLODDistances();
         for ( uint32_t lodIndex = 0; lodIndex < uint32_t( meshDataLODDistance.size() ); ++lodIndex )
         {
-            meshInstanceRoot.WriteLODDistance( bufferData_WriteCombined, lodIndex, meshDataLODDistance[lodIndex] * globalUniformScale );
+            meshInstanceRoot.SetLODDistance( lodIndex, meshDataLODDistance[lodIndex] * globalUniformScale );
         }
 
-        // Write world bounds - always stored on the CPU in compressed form and decompressed on the fly
-        {
-            AABB const worldAABB = GetWorldBounds().GetAABB();
+        Memory::CopyToWriteCombined( bufferData_WriteCombined.data(), &meshInstanceRoot, sizeof( ShaderTypes::MeshInstanceRoot ) );
+    }
 
-            meshInstanceRoot.WriteWorldAABB( bufferData_WriteCombined, worldAABB.m_center, worldAABB.m_halfExtents, GetWorldTransform().GetTranslation().ToFloat3() );
+    void MeshComponent::WriteMeshInstanceRootTransform()
+    {
+        if ( !m_meshInstanceRootProxy.IsValid() )
+        {
+            return;
+        }
+
+        EE_PROFILE_FUNCTION_RENDER();
+
+        AABB const worldAABB = GetWorldBounds().GetAABB();
+        m_meshInstanceRootProxy.WriteRootTransform( GetWorldTransform(), GetWorldNonUniformScale(), worldAABB.m_center.ToFloat3(), worldAABB.m_halfExtents.ToFloat3() );
+    }
+
+    void MeshComponent::WriteMeshInstanceLocalTransforms()
+    {
+        EE_PROFILE_FUNCTION_RENDER();
+
+        EE_ASSERT( !m_meshInstanceProxies.empty() );
+
+        TVector<Matrix43> const& submeshLocalTransforms = GetMeshResource()->GetSubmeshLocalTransforms();
+        EE_ASSERT( submeshLocalTransforms.size() == m_submeshToMeshInstance.size() );
+
+        //-------------------------------------------------------------------------
+
+        for ( auto& meshInstanceProxyPair : m_meshInstanceProxies )
+        {
+            meshInstanceProxyPair.second.StartLocalTransformWrite();
+        }
+
+        for ( SubmeshToMeshInstance const& submeshToMeshInstance : m_submeshToMeshInstance )
+        {
+            m_meshInstanceProxies[submeshToMeshInstance.m_proxyIndex].second.WriteLocalTransform( submeshLocalTransforms[submeshToMeshInstance.m_submeshIndex] );
+        }
+
+        for ( auto& meshInstanceProxyPair : m_meshInstanceProxies )
+        {
+            meshInstanceProxyPair.second.SubmitLocalTransformWrite();
+        }
+    }
+
+    void MeshComponent::ResolveSubmeshMaterials( Material const* pPlaceholderMaterial )
+    {
+        EE_PROFILE_FUNCTION_RENDER();
+
+        EE_ASSERT( pPlaceholderMaterial != nullptr );
+
+        Mesh const* pMesh = GetMeshResource();
+        EE_ASSERT( pMesh != nullptr );
+
+        TInlineVector<Material const*, 50> const resolvedMaterials = GetResolvedMaterials();
+        uint32_t const numSubmeshes = uint32_t( pMesh->GetNumSubmeshes() );
+        EE_ASSERT( resolvedMaterials.size() == numSubmeshes );
+
+        m_submeshToMeshInstance.resize( numSubmeshes );
+        for ( uint32_t submeshIndex = 0; submeshIndex < numSubmeshes; ++submeshIndex )
+        {
+            SubmeshToMeshInstance& submeshToMeshInstance = m_submeshToMeshInstance[submeshIndex];
+
+            submeshToMeshInstance.m_submeshIndex = submeshIndex;
+
+            Material const* pMaterial = resolvedMaterials[submeshIndex];
+            if ( pMaterial == nullptr )
+            {
+                EE_LOG_ERROR( LogCategory::Render, "MeshComponent", "Failed to resolve material for submesh %u, reverting to placeholder", submeshIndex );
+                pMaterial = pPlaceholderMaterial;
+            }
+
+            EE_ASSERT( pMaterial != nullptr );
+
+            submeshToMeshInstance.m_shaderIndex = pMaterial->GetShaderIndex();
+            EE_ASSERT( submeshToMeshInstance.m_shaderIndex != -1 );
+
+            submeshToMeshInstance.m_shaderParametersOffsetIn32ByteBlocks = pMaterial->GetShaderParametersOffsetIn32ByteBlocks();
+
+            Mesh::Submesh const& submesh = pMesh->GetSubmesh( submeshIndex );
+            submeshToMeshInstance.m_numClusters = pMesh->GetGeometry()[submesh.m_geometryIdx].GetNumClusters();
+            submeshToMeshInstance.m_pMeshBuffer = pMesh->GetMeshBuffer( submesh.m_geometryIdx );
+            submeshToMeshInstance.m_lodMask = submesh.m_lodMask;
+        }
+    }
+
+    void MeshComponent::ResolveSubmeshProxyData( uint32_t numShaderPools )
+    {
+        EE_PROFILE_FUNCTION_RENDER();
+
+        EE_ASSERT( !m_meshInstanceProxies.empty() );
+        EE_ASSERT( !m_submeshToMeshInstance.empty() );
+
+        TVector<uint32_t> shaderToProxyIndex( numShaderPools, ~0U );
+        for ( uint32_t proxyIndex = 0; proxyIndex < m_meshInstanceProxies.size(); ++proxyIndex )
+        {
+            EE_ASSERT( m_meshInstanceProxies[proxyIndex].first < numShaderPools );
+            shaderToProxyIndex[m_meshInstanceProxies[proxyIndex].first] = proxyIndex;
+        }
+
+        TVector<uint32_t> proxyInstanceIndices( m_meshInstanceProxies.size(), 0 );
+        TVector<uint32_t> proxyClusterToInstanceOffsets( m_meshInstanceProxies.size(), 0 );
+        for ( uint32_t proxyIndex = 0; proxyIndex < m_meshInstanceProxies.size(); ++proxyIndex )
+        {
+            proxyClusterToInstanceOffsets[proxyIndex] = m_meshInstanceProxies[proxyIndex].second.m_clusterHandle.m_offset;
+        }
+
+        for ( SubmeshToMeshInstance& submeshToMeshInstance : m_submeshToMeshInstance )
+        {
+            uint32_t const proxyIndex = shaderToProxyIndex[uint32_t( submeshToMeshInstance.m_shaderIndex )];
+            EE_ASSERT( proxyIndex != ~0U );
+
+            submeshToMeshInstance.m_proxyIndex = proxyIndex;
+            submeshToMeshInstance.m_instanceIndex = proxyInstanceIndices[proxyIndex]++;
+            submeshToMeshInstance.m_clusterToInstanceOffset = proxyClusterToInstanceOffsets[proxyIndex];
+
+            proxyClusterToInstanceOffsets[proxyIndex] += submeshToMeshInstance.m_numClusters;
+        }
+
+        // Validation
+        //-------------------------------------------------------------------------
+
+        for ( uint32_t proxyIndex = 0; proxyIndex < m_meshInstanceProxies.size(); ++proxyIndex )
+        {
+            EE_ASSERT( proxyInstanceIndices[proxyIndex] == m_meshInstanceProxies[proxyIndex].second.m_instanceHandle.m_size );
+            EE_ASSERT( proxyClusterToInstanceOffsets[proxyIndex] == m_meshInstanceProxies[proxyIndex].second.m_clusterHandle.m_offset + m_meshInstanceProxies[proxyIndex].second.m_clusterHandle.m_size );
+        }
+    }
+
+    void MeshComponent::UpdateSubmeshVisibility()
+    {
+        EE_PROFILE_FUNCTION_RENDER();
+
+        EE_ASSERT( !m_submeshToMeshInstance.empty() );
+
+        Mesh const* pMesh = GetMeshResource();
+        EE_ASSERT( pMesh != nullptr );
+
+        uint32_t const numSubmeshes = uint32_t( pMesh->GetNumSubmeshes() );
+        EE_ASSERT( m_submeshToMeshInstance.size() == numSubmeshes );
+
+        TVector<bool> hiddenSubmeshLookup( numSubmeshes, false );
+        for ( int16_t hiddenSubmeshIdx : m_submeshSettings.m_hiddenSubmeshes )
+        {
+            EE_ASSERT( hiddenSubmeshIdx >= 0 && uint32_t( hiddenSubmeshIdx ) < numSubmeshes );
+            hiddenSubmeshLookup[hiddenSubmeshIdx] = true;
+        }
+
+        for ( SubmeshToMeshInstance& submeshToMeshInstance : m_submeshToMeshInstance )
+        {
+            submeshToMeshInstance.m_instanceHidden = hiddenSubmeshLookup[submeshToMeshInstance.m_submeshIndex];
+        }
+    }
+
+    void MeshComponent::ValidateSubmeshInstanceData( Material const* pPlaceholderMaterial ) const
+    {
+        EE_PROFILE_FUNCTION_RENDER();
+
+        EE_ASSERT( pPlaceholderMaterial != nullptr );
+
+        Mesh const* pMesh = GetMeshResource();
+        EE_ASSERT( pMesh != nullptr );
+
+        TInlineVector<Material const*, 50> const resolvedMaterials = GetResolvedMaterials();
+        uint32_t const numSubmeshes = uint32_t( pMesh->GetNumSubmeshes() );
+
+        // If any of the asserts below are failing this likely means that you're doing something that needs to go through RequestRuntimeResourceChange()
+        //-------------------------------------------------------------------------
+
+        EE_ASSERT( resolvedMaterials.size() == numSubmeshes );
+        EE_ASSERT( m_submeshToMeshInstance.size() == numSubmeshes );
+
+        for ( uint32_t submeshIndex = 0; submeshIndex < numSubmeshes; ++submeshIndex )
+        {
+            SubmeshToMeshInstance const& submeshToMeshInstance = m_submeshToMeshInstance[submeshIndex];
+
+            Material const* pMaterial = resolvedMaterials[submeshIndex];
+            if ( pMaterial == nullptr )
+            {
+                pMaterial = pPlaceholderMaterial;
+            }
+            EE_ASSERT( pMaterial != nullptr );
+
+            EE_ASSERT( submeshToMeshInstance.m_submeshIndex == submeshIndex );
+            EE_ASSERT( submeshToMeshInstance.m_shaderIndex == pMaterial->GetShaderIndex() );
+            EE_ASSERT( submeshToMeshInstance.m_shaderParametersOffsetIn32ByteBlocks == pMaterial->GetShaderParametersOffsetIn32ByteBlocks() );
+
+            Mesh::Submesh const& submesh = pMesh->GetSubmesh( submeshIndex );
+            EE_ASSERT( submeshToMeshInstance.m_numClusters == pMesh->GetGeometry()[submesh.m_geometryIdx].GetNumClusters() );
+            EE_ASSERT( submeshToMeshInstance.m_pMeshBuffer == pMesh->GetMeshBuffer( submesh.m_geometryIdx ) );
+            EE_ASSERT( submeshToMeshInstance.m_lodMask == submesh.m_lodMask );
         }
     }
 }

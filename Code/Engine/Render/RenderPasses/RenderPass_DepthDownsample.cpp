@@ -45,13 +45,13 @@ namespace EE::Render
         uint32_t depthDownsampleWidth8 = textureWidth / 8;
         uint32_t depthDownsampleHeight8 = textureHeight / 8;
 
-        if ( !pRenderViewport->m_DepthDownsample2 || depthDownsampleWidth2 != pRenderViewport->m_DepthDownsample2->m_width || depthDownsampleHeight2 != pRenderViewport->m_DepthDownsample2->m_height )
+        if ( !pRenderViewport->m_depthDownsample2 || depthDownsampleWidth2 != pRenderViewport->m_depthDownsample2->m_width || depthDownsampleHeight2 != pRenderViewport->m_depthDownsample2->m_height )
         {
             pRenderSystem->QueueResourceDelete
             (
-                eastl::move( pRenderViewport->m_DepthDownsample2 ),
-                eastl::move( pRenderViewport->m_DepthDownsample4 ),
-                eastl::move( pRenderViewport->m_DepthDownsample8 )
+                eastl::move( pRenderViewport->m_depthDownsample2 ),
+                eastl::move( pRenderViewport->m_depthDownsample4 ),
+                eastl::move( pRenderViewport->m_depthDownsample8 )
             );
 
             RHI::TextureParameters depthTextureParameters = {};
@@ -61,17 +61,17 @@ namespace EE::Render
             depthTextureParameters.m_width = depthDownsampleWidth2;
             depthTextureParameters.m_height = depthDownsampleHeight2;
             depthTextureParameters.m_debugName.sprintf( "Half resolution depth %dx%d", depthTextureParameters.m_width, depthTextureParameters.m_height );
-            pRenderViewport->m_DepthDownsample2 = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthTextureParameters );
+            pRenderViewport->m_depthDownsample2 = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthTextureParameters );
 
             depthTextureParameters.m_width = depthDownsampleWidth4;
             depthTextureParameters.m_height = depthDownsampleHeight4;
             depthTextureParameters.m_debugName.sprintf( "Quarter resolution depth %dx%d", depthTextureParameters.m_width, depthTextureParameters.m_height );
-            pRenderViewport->m_DepthDownsample4 = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthTextureParameters );
+            pRenderViewport->m_depthDownsample4 = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthTextureParameters );
 
             depthTextureParameters.m_width = depthDownsampleWidth8;
             depthTextureParameters.m_height = depthDownsampleHeight8;
             depthTextureParameters.m_debugName.sprintf( "Eighth resolution depth %dx%d", depthTextureParameters.m_width, depthTextureParameters.m_height );
-            pRenderViewport->m_DepthDownsample8 = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthTextureParameters );
+            pRenderViewport->m_depthDownsample8 = RHI::CreateTexture( pRenderSystem->GetContextRHI(), depthTextureParameters );
         }
 
     }
@@ -87,12 +87,12 @@ namespace EE::Render
         // 1x -> 2x
 
         EE_ASSERT( !resourceStates.HasPendingBarriers() );
-        resourceStates.Writeable( pRenderViewport->m_DepthDownsample2, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+        resourceStates.Writeable( pRenderViewport->m_depthDownsample2, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
         resourceStates.FlushBarriers( pCommandBuffer );
 
-        RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_DepthDownsample2.m_pTexture, 1 }, nullptr, &loadAction );
-        RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, float( pRenderViewport->m_DepthDownsample2->m_width ), float( pRenderViewport->m_DepthDownsample2->m_height ), 0.0F, 1.0F );
-        RHI::CmdSetScissor( pCommandBuffer, 0, 0, pRenderViewport->m_DepthDownsample2->m_width, pRenderViewport->m_DepthDownsample2->m_height );
+        RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_depthDownsample2.m_pTexture, 1 }, nullptr, &loadAction );
+        RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, float( pRenderViewport->m_depthDownsample2->m_width ), float( pRenderViewport->m_depthDownsample2->m_height ), 0.0F, 1.0F );
+        RHI::CmdSetScissor( pCommandBuffer, 0, 0, pRenderViewport->m_depthDownsample2->m_width, pRenderViewport->m_depthDownsample2->m_height );
 
         ShaderTypes::DownsampleResourceTableData rootConstants = {};
         rootConstants.SetInputTexture( resourceStates, RHI::PipelineStage::PixelShader, depthBuffer );
@@ -107,30 +107,30 @@ namespace EE::Render
         // 2x -> 4x
 
         EE_ASSERT( !resourceStates.HasPendingBarriers() );
-        resourceStates.ReadOnly( pRenderViewport->m_DepthDownsample2, RHI::PipelineStage::PixelShader, RHI::ResourceAccess::ShaderResource, RHI::TextureState::ShaderResource );
-        resourceStates.Writeable( pRenderViewport->m_DepthDownsample4, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+        resourceStates.ReadOnly( pRenderViewport->m_depthDownsample2, RHI::PipelineStage::PixelShader, RHI::ResourceAccess::ShaderResource, RHI::TextureState::ShaderResource );
+        resourceStates.Writeable( pRenderViewport->m_depthDownsample4, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
         resourceStates.FlushBarriers( pCommandBuffer );
 
-        RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_DepthDownsample4.m_pTexture, 1 }, nullptr, &loadAction );
-        RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, float( pRenderViewport->m_DepthDownsample4->m_width ), float( pRenderViewport->m_DepthDownsample4->m_height ), 0.0F, 1.0F );
-        RHI::CmdSetScissor( pCommandBuffer, 0, 0, pRenderViewport->m_DepthDownsample4->m_width, pRenderViewport->m_DepthDownsample4->m_height );
+        RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_depthDownsample4.m_pTexture, 1 }, nullptr, &loadAction );
+        RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, float( pRenderViewport->m_depthDownsample4->m_width ), float( pRenderViewport->m_depthDownsample4->m_height ), 0.0F, 1.0F );
+        RHI::CmdSetScissor( pCommandBuffer, 0, 0, pRenderViewport->m_depthDownsample4->m_width, pRenderViewport->m_depthDownsample4->m_height );
 
-        rootConstants.SetInputTexture( RHI::GetTextureHandle( pRenderViewport->m_DepthDownsample2, RHI::DescriptorTypeFlags::Texture, 0 ) );
+        rootConstants.SetInputTexture( RHI::GetTextureHandle( pRenderViewport->m_depthDownsample2, RHI::DescriptorTypeFlags::Texture, 0 ) );
         RHI::CmdSetRootConstants( pCommandBuffer, 0, &rootConstants, sizeof( rootConstants ) );
         RHI::CmdDraw( pCommandBuffer, 3, 0 );
 
         //-------------------------------------------------------------------------
         // 4x -> 8x
         EE_ASSERT( !resourceStates.HasPendingBarriers() );
-        resourceStates.ReadOnly( pRenderViewport->m_DepthDownsample4, RHI::PipelineStage::PixelShader, RHI::ResourceAccess::ShaderResource, RHI::TextureState::ShaderResource );
-        resourceStates.Writeable( pRenderViewport->m_DepthDownsample8, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+        resourceStates.ReadOnly( pRenderViewport->m_depthDownsample4, RHI::PipelineStage::PixelShader, RHI::ResourceAccess::ShaderResource, RHI::TextureState::ShaderResource );
+        resourceStates.Writeable( pRenderViewport->m_depthDownsample8, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
         resourceStates.FlushBarriers( pCommandBuffer );
 
-        RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_DepthDownsample8.m_pTexture, 1 }, nullptr, &loadAction );
-        RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, float( pRenderViewport->m_DepthDownsample8->m_width ), float( pRenderViewport->m_DepthDownsample8->m_height ), 0.0F, 1.0F );
-        RHI::CmdSetScissor( pCommandBuffer, 0, 0, pRenderViewport->m_DepthDownsample8->m_width, pRenderViewport->m_DepthDownsample8->m_height );
+        RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_depthDownsample8.m_pTexture, 1 }, nullptr, &loadAction );
+        RHI::CmdSetViewport( pCommandBuffer, 0.0F, 0.0F, float( pRenderViewport->m_depthDownsample8->m_width ), float( pRenderViewport->m_depthDownsample8->m_height ), 0.0F, 1.0F );
+        RHI::CmdSetScissor( pCommandBuffer, 0, 0, pRenderViewport->m_depthDownsample8->m_width, pRenderViewport->m_depthDownsample8->m_height );
 
-        rootConstants.SetInputTexture( RHI::GetTextureHandle( pRenderViewport->m_DepthDownsample4, RHI::DescriptorTypeFlags::Texture, 0 ) );
+        rootConstants.SetInputTexture( RHI::GetTextureHandle( pRenderViewport->m_depthDownsample4, RHI::DescriptorTypeFlags::Texture, 0 ) );
         RHI::CmdSetRootConstants( pCommandBuffer, 0, &rootConstants, sizeof( rootConstants ) );
         RHI::CmdDraw( pCommandBuffer, 3, 0 );
     }

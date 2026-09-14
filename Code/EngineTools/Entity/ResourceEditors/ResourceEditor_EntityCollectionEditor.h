@@ -22,6 +22,7 @@ namespace EE::EntityModel
     public:
 
         EntityCollectionEditor( ToolsContext const* pToolsContext, ResourceID const& collectionResourceID, EntityWorld* pWorld );
+        ~EntityCollectionEditor();
 
         virtual void Initialize( UpdateContext const& context ) override;
         virtual void Shutdown( UpdateContext const& context ) override;
@@ -47,10 +48,13 @@ namespace EE::EntityModel
         virtual void PostUndoRedo( UndoStack::Operation operation, IUndoableAction const* pAction ) override;
         virtual void Update( UpdateContext const& context, bool isVisible, bool isFocused ) override;
 
+        void OnSelectionChanged();
+
     private:
 
         EditorContext                                   m_editorContext;
         TVector<ViewportResourceDropHandler const*>     m_pViewportDropHandlers;
+        EventBindingID                                  m_selectionChangedEventID;
 
         ImGuiX::Gizmo                                   m_gizmo;
         EntityOutliner                                  m_outliner;

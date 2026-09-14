@@ -13,22 +13,24 @@ EE_DECLARE_ROOT_CBV( GlobalParameters, b0, space0 );
 [numthreads( 64, 1, 1 )]
 void CS_main( uint groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID, uint3 dispatchThreadID : SV_DispatchThreadID )
 {
-    Buffer<uint64_t>                    meshInstancePageBuffer          = GetBuffer( RootCBV.m_meshInstancePageBuffer );
-    
     RWBuffer<uint>                      instancePickingDistancesBuffer  = GetBuffer( RootCBV.m_instancePickingDistancesBuffer );   
     AppendBuffer<PickingResult>         pickingResultsBuffer            = CreateAppendBuffer<PickingResult>( RootCBV.m_instancePickingResultsBuffer );
-    
-    uint64_t meshInstancePage = meshInstancePageBuffer[groupID];
-    uint64_t meshInstancePageMask = ( 1ULL << groupThreadID );
-        
-    if ( meshInstancePage & meshInstancePageMask )
+
+    Buffer<uint64_t>                    meshInstanceRootPageBuffer      = GetBuffer( RootCBV.m_meshInstanceRootPageBuffer );
+
+    uint64_t meshInstanceRootPage = meshInstanceRootPageBuffer[groupID];
+    uint64_t meshInstanceRootPageMask = ( 1ULL << groupThreadID );
+
+    if ( meshInstanceRootPage & meshInstanceRootPageMask )
     {
-        uint instanceDistance = instancePickingDistancesBuffer[dispatchThreadID.x];
+        const uint meshInstanceRootIndex = dispatchThreadID.x;
+
+        uint instanceDistance = instancePickingDistancesBuffer[meshInstanceRootIndex];
 
         if ( instanceDistance < asuint( 1.5E+10 ) )
         {
             PickingResult result = (PickingResult) 0;
-            result.m_instanceID     = dispatchThreadID.x;
+            result.m_instanceID     = meshInstanceRootIndex;
             result.m_hitDistance    = asfloat( instanceDistance );
             result.m_sortPriority   = ~0U;
             result.m_hitTestID      = ~0ULL;

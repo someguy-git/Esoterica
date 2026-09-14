@@ -17,7 +17,7 @@ namespace EE::Resource
     static char const* const g_serverInfoWindowName = "Server";
     static char const* const g_clientInfoWindowName = "Clients";
     static char const* const g_compilersWindowName = "Compilers";
-    static char const* const g_packagingControlsWindowName = "Packaging";
+    static char const* const g_publishingControlsWindowName = "Publishing";
     static char const* const g_recompilationBlockersWindowName = "Recompilation Blockers";
 
     //-------------------------------------------------------------------------
@@ -73,8 +73,8 @@ namespace EE::Resource
         ImGui::DockBuilderDockWindow( g_clientInfoWindowName, leftDockID );
         ImGui::DockBuilderDockWindow( g_compilersWindowName, leftDockID );
 
-        ImGui::DockBuilderDockWindow( g_packagingControlsWindowName, bottomLeftDockID );
         ImGui::DockBuilderDockWindow( g_recompilationBlockersWindowName, bottomLeftDockID );
+        ImGui::DockBuilderDockWindow( g_publishingControlsWindowName, bottomLeftDockID );
     }
 
     void ResourceServerUI::Draw()
@@ -129,7 +129,7 @@ namespace EE::Resource
         DrawClientInfoWindow();
         DrawCompilerInfoWindow();
         DrawCompilationRequestsWindow();
-        DrawPackagingWindow();
+        DrawPublishingWindow();
         DrawRecompilationBlockersWindow();
 
         // Draw any open dialogs
@@ -644,13 +644,13 @@ namespace EE::Resource
                                 }
                                 break;
 
-                                case RequestOrigin::Package:
+                                case RequestOrigin::Publish:
                                 {
                                     {
                                         ImGuiX::ScopedFont sf( ImGuiX::Font::Large );
-                                        ImGui::Text( EE_ICON_PACKAGE_VARIANT );
+                                        ImGui::Text( EE_ICON_PUBLISH );
                                     }
-                                    ImGui::SetItemTooltip( "Package" );
+                                    ImGui::SetItemTooltip( "Publish" );
                                 }
                                 break;
                             }
@@ -994,21 +994,21 @@ namespace EE::Resource
         ImGui::End();
     }
 
-    void ResourceServerUI::DrawPackagingWindow()
+    void ResourceServerUI::DrawPublishingWindow()
     {
-        if ( ImGui::Begin( g_packagingControlsWindowName ) )
+        if ( ImGui::Begin( g_publishingControlsWindowName ) )
         {
-            auto const packagingStage = m_resourceServer.GetPackagingStage();
+            auto const publishingStage = m_resourceServer.GetPublishingStage();
 
             //-------------------------------------------------------------------------
-            // Packaging UI
+            // Publishing UI
             //-------------------------------------------------------------------------
 
-            bool const disablePackagingUI = ( packagingStage == ResourceServer::PackagingStage::Preparing ) || ( packagingStage == ResourceServer::PackagingStage::Packaging );
-            ImGui::BeginDisabled( disablePackagingUI );
+            bool const disablePublishingUI = ( publishingStage == ResourceServer::PublishingStage::Preparing ) || ( publishingStage == ResourceServer::PublishingStage::Publishing );
+            ImGui::BeginDisabled( disablePublishingUI );
             {
                 InlineString previewStr;
-                auto const& mapsToBePackaged = m_resourceServer.GetMapsQueuedForPackaging();
+                auto const& mapsToBePackaged = m_resourceServer.GetMapsQueuedForPublishing();
                 for ( auto const& mapID : mapsToBePackaged )
                 {
                     if ( !previewStr.empty() )
@@ -1020,7 +1020,7 @@ namespace EE::Resource
 
                 if ( previewStr.empty() )
                 {
-                    previewStr = "Nothing To Package";
+                    previewStr = "Nothing To Publish";
                 }
 
                 //-------------------------------------------------------------------------
@@ -1039,11 +1039,11 @@ namespace EE::Resource
                             {
                                 if ( isSelected )
                                 {
-                                    m_resourceServer.AddMapToPackagingList( mapID );
+                                    m_resourceServer.AddMapToPublishingList( mapID );
                                 }
                                 else
                                 {
-                                    m_resourceServer.RemoveMapFromPackagingList( mapID );
+                                    m_resourceServer.RemoveMapFromPublishingList( mapID );
                                 }
                             }
                         }
@@ -1051,7 +1051,7 @@ namespace EE::Resource
                         ImGui::EndCombo();
                     }
                 }
-                ImGuiX::ItemTooltip( "Select maps to package..." );
+                ImGuiX::ItemTooltip( "Select maps to publish..." );
 
                 ImGui::SameLine();
                 if ( ImGui::Button( EE_ICON_REFRESH"##RefreshMaps", ImVec2( ImGuiX::Style::s_iconButtonWidth, 0 ) ) )
@@ -1063,22 +1063,22 @@ namespace EE::Resource
                 //-------------------------------------------------------------------------
 
                 ImGui::SameLine();
-                ImGui::BeginDisabled( !m_resourceServer.CanStartPackaging() );
+                ImGui::BeginDisabled( !m_resourceServer.CanStartPublishing() );
                 if ( ImGuiX::ButtonColored( "Start", Colors::Green, Colors::White, ImVec2( 50, 0 ) ) )
                 {
-                    m_resourceServer.StartPackaging();
+                    m_resourceServer.StartPublishing();
                 }
                 ImGui::EndDisabled();
             }
             ImGui::EndDisabled();
 
             //-------------------------------------------------------------------------
-            // Packaging Progress
+            // Publishing Progress
             //-------------------------------------------------------------------------
 
-            if ( packagingStage != ResourceServer::PackagingStage::None )
+            if ( publishingStage != ResourceServer::PublishingStage::None )
             {
-                float const progress = m_resourceServer.GetPackagingProgress();
+                float const progress = m_resourceServer.GetPublishingProgress();
                 TInlineString<32> overlay( TInlineString<32>::CtorSprintf(), "%.2f%%", progress * 100 );
                 ImGui::ProgressBar( progress, ImVec2( -1, 0 ), overlay.c_str() );
 
@@ -1086,7 +1086,7 @@ namespace EE::Resource
 
                 if ( ImGui::BeginChild( "SMaps", ImGui::GetContentRegionAvail(), 0, 0 ) )
                 {
-                    auto const& mapsToBePackaged = m_resourceServer.GetMapsQueuedForPackaging();
+                    auto const& mapsToBePackaged = m_resourceServer.GetMapsQueuedForPublishing();
                     for ( auto const& mapID : mapsToBePackaged )
                     {
                         ImGui::BulletText( mapID.c_str() );

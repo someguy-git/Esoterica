@@ -4,7 +4,7 @@
 #include "Engine/Entity/EntityWorldSystemSignal.h"
 
 #include "Engine/Render/Device/DeviceRenderWorld.h"
-#include "Engine/Render/RenderMaterialShaderClusterCapacity.h"
+#include "Engine/Render/Device/DeviceResizeBuffer.h"
 #include "Engine/Viewport/ViewportPicking.h"
 
 #include "Base/Resource/ResourcePtr.h"
@@ -40,7 +40,20 @@ namespace EE::Render
 
         EE_ENTITY_WORLD_SYSTEM( RenderWorldSystem );
 
+        // Picking
+        //-------------------------------------------------------------------------
+
+        #if EE_DEVELOPMENT_TOOLS
         void UpdateViewportPickingData( RenderViewport* pViewport ) const;
+        #endif
+
+        // Outlines
+        //-------------------------------------------------------------------------
+
+        #if EE_DEVELOPMENT_TOOLS
+        void SetOutlinedComponents( TArrayView<ComponentID> componentIDs );
+        void ClearOutlinedComponents();
+        #endif
 
     private:
 
@@ -54,12 +67,11 @@ namespace EE::Render
 
         //-------------------------------------------------------------------------
 
-        void AddMeshClusters( Mesh const* pMeshResource, TInlineVector<Material const*, 50> const& resolvedMaterials );
-        void RemoveMeshClusters( Mesh const* pMeshResource, TInlineVector<Material const*, 50> const& resolvedMaterials );
-
-        //-------------------------------------------------------------------------
-
         void UpdateDeviceResources();
+
+        #if EE_DEVELOPMENT_TOOLS
+        RHI::BufferHandle GetMeshInstanceRootOutlineBufferHandle() const;
+        #endif
 
         RHI::TextureHandle GetRadianceTextureHandle() const;
         float GetRadianceTextureMipLevels() const;
@@ -84,9 +96,14 @@ namespace EE::Render
         TEntityMessageQueue<StaticMeshComponent>                            m_staticMeshComponentInstanceUpdateQueue;
         TEntityMessageQueue<SkeletalMeshComponent>                          m_skeletalMeshComponentInstanceUpdateQueue;
 
-        uint32_t                                                            m_numShadowCastingDirectionalLights = 0;
+        #if EE_DEVELOPMENT_TOOLS
+        DeviceResizeBuffer                                                  m_meshInstanceRootOutlineBuffer = {};
+        TAlignedVector<uint64_t>                                            m_meshInstanceRootOutlineData;
+        bool                                                                m_meshInstanceRootOutlineNeedUpdate = false;
+        TVector<ComponentID>                                                m_outlinedComponents;
+        #endif
 
-        MaterialShaderClusterCapacity                                       m_materialShaderClusterCapacity;
+        uint32_t                                                            m_numShadowCastingDirectionalLights = 0;
 
         bool                                                                m_needUpdateGlobalEnvironmentMap = true;
         RHI::Texture*                                                       m_pRadianceTexture = nullptr;

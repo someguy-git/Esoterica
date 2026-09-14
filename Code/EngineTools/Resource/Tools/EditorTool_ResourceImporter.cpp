@@ -1,6 +1,6 @@
 #include "EditorTool_ResourceImporter.h"
 #include "EngineTools/Resource/ResourceImportSettings.h"
-#include "EngineTools/FileSystem/DataFileSystem.h"
+#include "EngineTools/FileSystem/DataFileRegistry.h"
 #include "EngineTools/Core/ToolsContext.h"
 #include "EngineTools/Core/SystemDialogs.h"
 #include "Engine/Render/RenderMesh.h"
@@ -392,7 +392,7 @@ namespace EE::Resource
 
     public:
 
-        ImporterTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileSystem::DirectoryInfo const* pDirectoryEntry )
+        ImporterTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileRegistry::DirectoryInfo const* pDirectoryEntry )
             : TreeListViewItem( pParent )
             , m_toolsContext( toolsContext )
             , m_name( pDirectoryEntry->m_filePath.GetDirectoryName() )
@@ -432,7 +432,7 @@ namespace EE::Resource
             }
         }
 
-        ImporterTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileSystem::FileInfo const* pFileEntry )
+        ImporterTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileRegistry::FileInfo const* pFileEntry )
             : TreeListViewItem( pParent )
             , m_toolsContext( toolsContext )
             , m_name( pFileEntry->m_filePath.GetFilename() )
@@ -591,7 +591,7 @@ namespace EE::Resource
         m_treeview.SetFlag( TreeListView::UseSmallFont, false );
         m_treeview.SetFlag( TreeListView::SortTree, true );
 
-        m_resourceDatabaseUpdateEventBindingID = m_pToolsContext->m_pDataFileSystem->OnFileSystemCacheUpdated().Bind( [this] () { OnResourceDatabaseUpdated(); } );
+        m_resourceDatabaseUpdateEventBindingID = m_pToolsContext->m_pDataFileRegistry->OnFileSystemCacheUpdated().Bind( [this] () { OnResourceDatabaseUpdated(); } );
 
         // Create import settings
         //-------------------------------------------------------------------------
@@ -620,7 +620,7 @@ namespace EE::Resource
         //-------------------------------------------------------------------------
 
         m_selectedFile.Clear();
-        m_pToolsContext->m_pDataFileSystem->OnFileSystemCacheUpdated().Unbind( m_resourceDatabaseUpdateEventBindingID );
+        m_pToolsContext->m_pDataFileRegistry->OnFileSystemCacheUpdated().Unbind( m_resourceDatabaseUpdateEventBindingID );
     }
 
     void ResourceImporterEditorTool::Initialize( UpdateContext const& context )
@@ -636,7 +636,7 @@ namespace EE::Resource
 
     void ResourceImporterEditorTool::Update( UpdateContext const& context, bool isVisible, bool isFocused )
     {
-        if ( m_pToolsContext->m_pDataFileSystem->IsBuildingCaches() )
+        if ( m_pToolsContext->m_pDataFileRegistry->IsBuildingCaches() )
         {
             return;
         }
@@ -662,14 +662,14 @@ namespace EE::Resource
 
         if ( m_selectedFile.IsSet() )
         {
-            m_pToolsContext->m_pDataFileSystem->GetAllResourcesThatDependOnFile( m_selectedFile.m_resourcePath, m_selectedFile.m_dependentResources );
+            m_pToolsContext->m_pDataFileRegistry->GetAllResourcesThatDependOnFile( m_selectedFile.m_resourcePath, m_selectedFile.m_dependentResources );
         }
     }
 
     void ResourceImporterEditorTool::RebuildTreeView( TreeListViewItem* pRootItem )
     {
-        EE_ASSERT( m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() );
-        auto pDataDirectory = m_pToolsContext->m_pDataFileSystem->GetRawResourceDirectoryEntry();
+        EE_ASSERT( m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() );
+        auto pDataDirectory = m_pToolsContext->m_pDataFileRegistry->GetRawResourceDirectoryEntry();
 
         //-------------------------------------------------------------------------
 
@@ -725,7 +725,7 @@ namespace EE::Resource
             m_selectedFile.m_resourcePath = pSelectedFileItem->GetDataPath();
             m_selectedFile.m_filePath = pSelectedFileItem->GetFilePath();
             m_selectedFile.m_extension = m_selectedFile.m_filePath.GetExtension();
-            m_pToolsContext->m_pDataFileSystem->GetAllResourcesThatDependOnFile( pSelectedFileItem->GetDataPath(), m_selectedFile.m_dependentResources );
+            m_pToolsContext->m_pDataFileRegistry->GetAllResourcesThatDependOnFile( pSelectedFileItem->GetDataPath(), m_selectedFile.m_dependentResources );
 
             Import::InspectorContext ctx;
             ctx.m_sourceDataDirectoryPath = m_pToolsContext->GetSourceDataDirectory();
@@ -861,17 +861,17 @@ namespace EE::Resource
     void ResourceImporterEditorTool::DrawImporterWindow( UpdateContext const& context, bool isFocused )
     {
         // Draw progress bar
-        if ( m_pToolsContext->m_pDataFileSystem->IsBuildingCaches() )
+        if ( m_pToolsContext->m_pDataFileRegistry->IsBuildingCaches() )
         {
             ImGui::AlignTextToFramePadding();
-            ImGui::Text( m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() ? "Building Descriptor Cache: " : "Building File System Cache: " );
+            ImGui::Text( m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() ? "Building Descriptor Cache: " : "Building File System Cache: " );
             ImGui::SameLine();
-            ImGui::ProgressBar( m_pToolsContext->m_pDataFileSystem->GetCacheBuildProgress() );
+            ImGui::ProgressBar( m_pToolsContext->m_pDataFileRegistry->GetCacheBuildProgress() );
         }
 
         //-------------------------------------------------------------------------
 
-        if ( !m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() )
+        if ( !m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() )
         {
             return;
         }

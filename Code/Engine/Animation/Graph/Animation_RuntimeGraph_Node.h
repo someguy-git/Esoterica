@@ -111,6 +111,7 @@ namespace EE::Animation
         Skeleton const*                             m_pSkeleton;
         THashMap<StringID, int16_t> const&          m_parameterLookupMap;
         TVector<Resource::ResourcePtr> const*       m_pResources;
+        TaskSystem*                                 m_pTaskSystem = nullptr; // Only set for the 'Post-Instantiate' step
         uint64_t                                    m_userID;
 
         #if EE_DEVELOPMENT_TOOLS

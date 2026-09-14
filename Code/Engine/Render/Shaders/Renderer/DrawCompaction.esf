@@ -1,0 +1,65 @@
+#include "Engine/Render/Shaders/Renderer/RendererTypes.esh"
+#include "Engine/Render/Shaders/Renderer/RendererSurfaceShaderLayout.esh"
+#include "Engine/Render/Shaders/EngineShader.esh"
+#include "Engine/Render/Shaders/MeshInstance.esh"
+
+ESF_PARAMETER string ShaderType = "Compute";
+
+EE_DECLARE_ROOT_CONSTANTS( DrawCompactionRootConstants, b0, space0 );
+EE_DECLARE_ROOT_CBV( GlobalParameters, b1, space0 );
+
+[RootSignature( DrawCompactionRootSignature )]
+[numthreads( 128, 1, 1 )]
+void CS_main( uint groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID, uint3 dispatchThreadID : SV_DispatchThreadID )
+{
+    const uint workEntryIndex = RootConstants.m_workBufferOffset + groupID * 128 + groupThreadID;
+    if ( workEntryIndex >= RootConstants.m_numWorkEntries )
+    {
+        return;
+    }
+
+    StructuredBuffer<ClusterCullingWorkEntry>   cullingWorkBuffer               = GetBuffer( RWBufferToBuffer( RootConstants.m_cullingWorkBuffer ) );
+    StructuredBuffer<ClusterToInstance>         clusterToInstanceBuffer         = GetBuffer( RootConstants.m_clusterToInstanceBuffer );
+    StructuredBuffer<MeshInstance>              meshInstanceBuffer              = GetBuffer( RootConstants.m_instanceBuffer );
+    ByteAddressBuffer                           shaderDataBuffer                = GetBuffer( RootCBV.m_shaderDataBuffer );
+    StructuredBuffer<RenderView>                renderViewBuffer                = GetBuffer( RootCBV.m_renderViewBuffer );
+    RWStructuredBuffer<uint>                    drawClusterBuffer               = GetRWBuffer( RootConstants.m_drawClusterBuffer );
+    Buffer<uint>                                drawClusterBaseOffsetsBuffer    = GetBuffer( RootConstants.m_drawClusterBaseOffsetsBuffer );
+    RWBuffer<uint>                              drawClusterScatterOffsetsBuffer = GetRWBuffer( RootConstants.m_drawClusterScatterOffsetsBuffer );
+
+    //-------------------------------------------------------------------------
+
+    const ClusterCullingWorkEntry   workEntry           = cullingWorkBuffer[workEntryIndex];
+    const uint                      clusterIndex        = workEntry.m_clusterIndex;
+    const uint64_t                  clusterMask         = uint64_t( workEntry.m_visibilityMaskLow ) | ( uint64_t( workEntry.m_visibilityMaskHigh ) << 32 );
+    if ( clusterMask == 0 )
+    {
+        return;
+    }
+
+    const ClusterToInstance         clusterToInstance   = clusterToInstanceBuffer[clusterIndex];
+    const MeshInstance              meshInstance        = meshInstanceBuffer[clusterToInstance.m_instanceIndex];
+    const ShaderParameters          shaderParameters    = shaderDataBuffer.Load<ShaderParameters>( meshInstance.m_shaderParametersOffsetIn32ByteBlocks * 32 );
+
+    const uint baseBucket = GetBucketTypeForView( shaderParameters, false );
+
+    //-------------------------------------------------------------------------
+
+    for ( uint viewIndex = 0; viewIndex < RootCBV.m_numRenderViews; ++viewIndex )
+    {
+        if ( ( clusterMask & ( 1ULL << viewIndex ) ) == 0 )
+        {
+            continue;
+        }
+
+        const bool depthOnlyView = ( renderViewBuffer[viewIndex].m_renderViewFlags & RENDER_VIEW_FLAG_DEPTH_ONLY ) != 0;
+        const uint bucket = ( depthOnlyView && baseBucket == 2 ) ? 0 : baseBucket;
+
+        const uint scatterOffsetIndex = viewIndex * EE_NUM_RENDER_BUCKETS_PER_SHADER_PER_VIEW + bucket;
+
+        uint drawClusterBufferIndex = 0;
+        InterlockedAdd( drawClusterScatterOffsetsBuffer[scatterOffsetIndex], 1, drawClusterBufferIndex );
+
+        drawClusterBuffer[drawClusterBaseOffsetsBuffer[scatterOffsetIndex] + drawClusterBufferIndex] = clusterIndex;
+    }
+}

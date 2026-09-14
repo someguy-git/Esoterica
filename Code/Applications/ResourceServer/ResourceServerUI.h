@@ -43,7 +43,7 @@ namespace EE::Resource
         void DrawClientInfoWindow();
         void DrawCompilerInfoWindow();
         void DrawCompilationRequestsWindow();
-        void DrawPackagingWindow();
+        void DrawPublishingWindow();
         void DrawRecompilationBlockersWindow();
 
         bool DrawResaveProgressDialog();

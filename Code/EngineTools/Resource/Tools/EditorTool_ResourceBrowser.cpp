@@ -1,6 +1,6 @@
 #include "EditorTool_ResourceBrowser.h"
 #include "EngineTools/Resource/ResourceDescriptor.h"
-#include "EngineTools/FileSystem/DataFileSystem.h"
+#include "EngineTools/FileSystem/DataFileRegistry.h"
 #include "EngineTools/Core/ToolsContext.h"
 #include "EngineTools/Core/CommonToolTypes.h"
 #include "EngineTools/Core/DialogManager.h"
@@ -20,7 +20,7 @@ namespace EE::Resource
 
     public:
 
-        ResourceBrowserTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileSystem::DirectoryInfo const* pDirectoryEntry )
+        ResourceBrowserTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileRegistry::DirectoryInfo const* pDirectoryEntry )
             : TreeListViewItem( pParent )
             , m_toolsContext( toolsContext )
             , m_nameID( pDirectoryEntry->m_filePath.GetDirectoryName() )
@@ -39,7 +39,7 @@ namespace EE::Resource
             }
         }
 
-        ResourceBrowserTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileSystem::FileInfo const* pFileEntry )
+        ResourceBrowserTreeItem( TreeListViewItem* pParent, ToolsContext const& toolsContext, DataFileRegistry::FileInfo const* pFileEntry )
             : TreeListViewItem( pParent )
             , m_toolsContext( toolsContext )
             , m_nameID( pFileEntry->m_filePath.GetFilename() )
@@ -118,7 +118,7 @@ namespace EE::Resource
         m_filter.SetFilterHelpText( "Search..." );
 
         // Rebuild the tree whenever the file registry updates
-        m_resourceDatabaseUpdateEventBindingID = m_pToolsContext->m_pDataFileSystem->OnFileSystemCacheUpdated().Bind( [this] () { m_refreshRequested = true; } );
+        m_resourceDatabaseUpdateEventBindingID = m_pToolsContext->m_pDataFileRegistry->OnFileSystemCacheUpdated().Bind( [this] () { m_refreshRequested = true; } );
 
         // Create descriptor category tree
         //-------------------------------------------------------------------------
@@ -174,7 +174,7 @@ namespace EE::Resource
 
     ResourceBrowserEditorTool::~ResourceBrowserEditorTool()
     {
-        m_pToolsContext->m_pDataFileSystem->OnFileSystemCacheUpdated().Unbind( m_resourceDatabaseUpdateEventBindingID );
+        m_pToolsContext->m_pDataFileRegistry->OnFileSystemCacheUpdated().Unbind( m_resourceDatabaseUpdateEventBindingID );
     }
 
     void ResourceBrowserEditorTool::Initialize( UpdateContext const& context )
@@ -219,7 +219,7 @@ namespace EE::Resource
 
     void ResourceBrowserEditorTool::Update( UpdateContext const& context, bool isVisible, bool isFocused )
     {
-        if ( !m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() )
+        if ( !m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() )
         {
             return;
         }
@@ -257,18 +257,18 @@ namespace EE::Resource
         // Draw progress bar
         //-------------------------------------------------------------------------
 
-        if ( m_pToolsContext->m_pDataFileSystem->IsBuildingCaches() )
+        if ( m_pToolsContext->m_pDataFileRegistry->IsBuildingCaches() )
         {
             ImGui::AlignTextToFramePadding();
-            ImGui::Text( m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() ? "Building Descriptor Cache: " : "Building File System Cache: " );
+            ImGui::Text( m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() ? "Building Descriptor Cache: " : "Building File System Cache: " );
             ImGui::SameLine();
-            ImGui::ProgressBar( m_pToolsContext->m_pDataFileSystem->GetCacheBuildProgress() );
+            ImGui::ProgressBar( m_pToolsContext->m_pDataFileRegistry->GetCacheBuildProgress() );
         }
 
         // Draw UI
         //-------------------------------------------------------------------------
 
-        if ( m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() )
+        if ( m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() )
         {
             // Folders
             //-------------------------------------------------------------------------
@@ -496,8 +496,8 @@ namespace EE::Resource
 
     void ResourceBrowserEditorTool::RebuildDirectoryTreeView( TreeListViewItem* pRootItem )
     {
-        EE_ASSERT( m_pToolsContext->m_pDataFileSystem->IsFileSystemCacheBuilt() );
-        auto pDataDirectory = m_pToolsContext->m_pDataFileSystem->GetRawResourceDirectoryEntry();
+        EE_ASSERT( m_pToolsContext->m_pDataFileRegistry->IsFileSystemCacheBuilt() );
+        auto pDataDirectory = m_pToolsContext->m_pDataFileRegistry->GetRawResourceDirectoryEntry();
 
         //-------------------------------------------------------------------------
 
@@ -567,12 +567,12 @@ namespace EE::Resource
     // Files
     //-------------------------------------------------------------------------
 
-    bool ResourceBrowserEditorTool::DoesFileMatchFilter( DataFileSystem::FileInfo const* pFile, bool applyNameFilter )
+    bool ResourceBrowserEditorTool::DoesFileMatchFilter( DataFileRegistry::FileInfo const* pFile, bool applyNameFilter )
     {
         bool isVisible = true;
 
         // Raw files
-        if ( pFile->m_fileType == DataFileSystem::FileType::Unknown )
+        if ( pFile->m_fileType == DataFileRegistry::FileType::Unknown )
         {
             isVisible = m_showRawFiles;
         }
@@ -641,35 +641,35 @@ namespace EE::Resource
 
         //-------------------------------------------------------------------------
 
-        TVector<DataFileSystem::FileInfo const*> files;
+        TVector<DataFileRegistry::FileInfo const*> files;
         files.reserve( 25000 );
         if ( m_filter.HasFilterSet() )
         {
-            DataFileSystem::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileSystem->FindDirectoryEntry( m_selectedDirectory );
+            DataFileRegistry::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileRegistry->FindDirectoryEntry( m_selectedDirectory );
             if ( pDirectoryInfo == nullptr )
             {
-                pDirectoryInfo = m_pToolsContext->m_pDataFileSystem->FindDirectoryEntry( DataPath( "Data://" ) );
+                pDirectoryInfo = m_pToolsContext->m_pDataFileRegistry->FindDirectoryEntry( DataPath( "Data://" ) );
             }
 
             pDirectoryInfo->GetAllFiles( files, true );
         }
         else
         {
-            DataFileSystem::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileSystem->FindDirectoryEntry( m_selectedDirectory );
+            DataFileRegistry::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileRegistry->FindDirectoryEntry( m_selectedDirectory );
             if ( pDirectoryInfo != nullptr )
             {
-                for ( DataFileSystem::FileInfo const* pFileInfo : pDirectoryInfo->m_files )
+                for ( DataFileRegistry::FileInfo const* pFileInfo : pDirectoryInfo->m_files )
                 {
                     files.emplace_back( pFileInfo );
                 }
 
-                for ( DataFileSystem::DirectoryInfo const &subDir : pDirectoryInfo->m_directories )
+                for ( DataFileRegistry::DirectoryInfo const &subDir : pDirectoryInfo->m_directories )
                 {
                     m_directoryList.emplace_back( subDir );
                 }
             }
 
-            auto SortPredicate = [] ( DataFileSystem::DirectoryInfo const& a, DataFileSystem::DirectoryInfo const& b )
+            auto SortPredicate = [] ( DataFileRegistry::DirectoryInfo const& a, DataFileRegistry::DirectoryInfo const& b )
             {
                 return _stricmp( a.m_dataPath.c_str(), b.m_dataPath.c_str() ) < 0;
             };
@@ -679,7 +679,7 @@ namespace EE::Resource
 
         //-------------------------------------------------------------------------
 
-        for ( DataFileSystem::FileInfo const* pFileInfo : files )
+        for ( DataFileRegistry::FileInfo const* pFileInfo : files )
         {
             if ( DoesFileMatchFilter( pFileInfo, true ) )
             {
@@ -702,8 +702,8 @@ namespace EE::Resource
     {
         auto SortPredicate = [this] ( int32_t a, int32_t b )
         {
-            DataFileSystem::FileInfo const& lhs = m_fileList[a];
-            DataFileSystem::FileInfo const& rhs = m_fileList[b];
+            DataFileRegistry::FileInfo const& lhs = m_fileList[a];
+            DataFileRegistry::FileInfo const& rhs = m_fileList[b];
 
             switch ( m_sortRule )
             {
@@ -840,7 +840,7 @@ namespace EE::Resource
             // Directory
             //-------------------------------------------------------------------------
 
-            for ( DataFileSystem::DirectoryInfo const& directoryInfo : m_directoryList )
+            for ( DataFileRegistry::DirectoryInfo const& directoryInfo : m_directoryList )
             {
                 bool const isSelected = ( m_selectedItem == directoryInfo.m_dataPath );
 
@@ -900,9 +900,9 @@ namespace EE::Resource
 
             for ( int32_t const fileInfoIdx : m_sortedFileListIndices )
             {
-                DataFileSystem::FileInfo const& fileInfo = m_fileList[fileInfoIdx];
+                DataFileRegistry::FileInfo const& fileInfo = m_fileList[fileInfoIdx];
 
-                if ( !m_showRawFiles && fileInfo.m_fileType == DataFileSystem::FileType::Unknown )
+                if ( !m_showRawFiles && fileInfo.m_fileType == DataFileRegistry::FileType::Unknown )
                 {
                     continue;
                 }
@@ -1021,7 +1021,7 @@ namespace EE::Resource
 
             if ( ImGui::BeginPopup( s_directoryInfoContextMenu ) )
             {
-                DataFileSystem::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileSystem->FindDirectoryEntry( m_selectedDirectory );
+                DataFileRegistry::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileRegistry->FindDirectoryEntry( m_selectedDirectory );
                 if ( pDirectoryInfo != nullptr )
                 {
                     DrawDirectoryInfoContextMenu( *pDirectoryInfo, false );
@@ -1037,7 +1037,7 @@ namespace EE::Resource
         ImGui::PopStyleVar();
     }
 
-    void ResourceBrowserEditorTool::DrawDirectoryInfoContextMenu( DataFileSystem::DirectoryInfo const& directoryInfo, bool isFileListView )
+    void ResourceBrowserEditorTool::DrawDirectoryInfoContextMenu( DataFileRegistry::DirectoryInfo const& directoryInfo, bool isFileListView )
     {
         if ( ImGui::MenuItem( EE_ICON_OPEN_IN_NEW" Open In Explorer" ) )
         {
@@ -1056,7 +1056,7 @@ namespace EE::Resource
 
         //-------------------------------------------------------------------------
 
-        if ( !m_pToolsContext->m_pDataFileSystem->IsBuildingCaches() )
+        if ( !m_pToolsContext->m_pDataFileRegistry->IsBuildingCaches() )
         {
             if ( !isFileListView )
             {
@@ -1085,7 +1085,7 @@ namespace EE::Resource
         }
     }
 
-    void ResourceBrowserEditorTool::DrawFileInfoContextMenu( DataFileSystem::FileInfo const& fileInfo )
+    void ResourceBrowserEditorTool::DrawFileInfoContextMenu( DataFileRegistry::FileInfo const& fileInfo )
     {
         if ( ImGui::MenuItem( EE_ICON_OPEN_IN_APP" Open" ) )
         {
@@ -1116,7 +1116,7 @@ namespace EE::Resource
             ImGui::SetClipboardText( fileInfo.m_dataPath.c_str() );
         }
 
-        if ( !m_pToolsContext->m_pDataFileSystem->IsBuildingCaches() )
+        if ( !m_pToolsContext->m_pDataFileRegistry->IsBuildingCaches() )
         {
             ImGui::Separator();
 

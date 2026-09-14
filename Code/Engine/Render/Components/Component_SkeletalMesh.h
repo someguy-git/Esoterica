@@ -124,20 +124,13 @@ namespace EE::Render
 
         //-------------------------------------------------------------------------
 
-        void QueueInitializeMeshInstance( DeviceRenderWorld* pDeviceRenderWorld );
-
         void UpdateSkinningProxy();
-
-        inline uint32_t ComputeInstanceDataSizeInBytes()
-        {
-            return MeshComponent::ComputeInstanceDataSizeInBytes( GetMesh() );
-        }
 
         inline void WriteInstanceData( TArrayView<uint32_t> bufferData_WriteCombined ) const
         {
             EE_ASSERT( m_meshInstanceRootProxy.IsValid() );
             EE_ASSERT( m_skinningProxy.IsValid() );
-            MeshComponent::WriteInstanceData( GetMesh(), m_meshInstanceProxy.m_instanceHandle, m_skinningProxy.m_bonesHandle, bufferData_WriteCombined );
+            MeshComponent::WriteInstanceData( GetMesh(), m_skinningProxy.m_bonesHandle.m_offset, bufferData_WriteCombined );
         }
 
     private:
@@ -145,8 +138,6 @@ namespace EE::Render
         // Internal renderer data
         //-------------------------------------------------------------------------
 
-        MeshInstanceProxy                               m_meshInstanceRootProxy = {};
-        MeshInstanceProxy                               m_meshInstanceProxy = {};
         SkinningProxy                                   m_skinningProxy = {};
     };
 

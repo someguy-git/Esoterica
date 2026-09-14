@@ -95,6 +95,7 @@ namespace EE::Reflection
         bool                                    m_showInResourceEditor = true;
         bool                                    m_useMeshShader = false;
         bool                                    m_useTaskShader = false;
+        bool                                    m_useOutlineIDPixelShader = false;
         TVector<CompiledData>                   m_compiledData; // Note: order of shader compilation and the order of this data is important!!!
 
         TVector<StageToolMetadata>              m_shaderStageToolMetadata;

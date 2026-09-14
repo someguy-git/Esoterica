@@ -1,4 +1,4 @@
-#include "DataFileSystem.h"
+#include "DataFileRegistry.h"
 #include "EngineTools/Resource/ResourceDescriptor.h"
 #include "Engine/Entity/EntityDescriptors.h"
 #include "Base/FileSystem/FileSystemUtils.h"
@@ -10,12 +10,12 @@
 
 namespace EE
 {
-    DataFileSystem::FileInfo::~FileInfo()
+    DataFileRegistry::FileInfo::~FileInfo()
     {
         EE::Delete( m_pDataFile );
     }
 
-    DataFileSystem::FileInfo& DataFileSystem::FileInfo::operator=( FileInfo&& rhs )
+    DataFileRegistry::FileInfo& DataFileRegistry::FileInfo::operator=( FileInfo&& rhs )
     {
         m_dataPath = rhs.m_dataPath;
         m_filePath = rhs.m_filePath;
@@ -29,7 +29,7 @@ namespace EE
         return *this;
     }
 
-    DataFileSystem::FileInfo& DataFileSystem::FileInfo::operator=( FileInfo const& rhs )
+    DataFileRegistry::FileInfo& DataFileRegistry::FileInfo::operator=( FileInfo const& rhs )
     {
         m_dataPath = rhs.m_dataPath;
         m_filePath = rhs.m_filePath;
@@ -40,7 +40,7 @@ namespace EE
         return *this;
     }
 
-    void DataFileSystem::FileInfo::LoadDataFile( TypeSystem::TypeRegistry const& typeRegistry, Log& log )
+    void DataFileRegistry::FileInfo::LoadDataFile( TypeSystem::TypeRegistry const& typeRegistry, Log& log )
     {
         EE_ASSERT( IsResourceDescriptorFile() || IsDataFile() );
         EE_ASSERT( m_pDataFile == nullptr );
@@ -50,7 +50,7 @@ namespace EE
         m_pDataFile = result.m_pDataFile;
     }
 
-    void DataFileSystem::FileInfo::ReloadDataFile( TypeSystem::TypeRegistry const& typeRegistry, Log& log )
+    void DataFileRegistry::FileInfo::ReloadDataFile( TypeSystem::TypeRegistry const& typeRegistry, Log& log )
     {
         EE::Delete( m_pDataFile );
         LoadDataFile( typeRegistry, log );
@@ -58,7 +58,7 @@ namespace EE
 
     //-------------------------------------------------------------------------
 
-    void DataFileSystem::DirectoryInfo::ChangePath( FileSystem::Path const& rawResourceDirectoryPath, FileSystem::Path const& newPath )
+    void DataFileRegistry::DirectoryInfo::ChangePath( FileSystem::Path const& rawResourceDirectoryPath, FileSystem::Path const& newPath )
     {
         FileSystem::Path const oldPath = m_filePath;
         m_name = newPath.GetDirectoryName();
@@ -84,7 +84,7 @@ namespace EE
         }
     }
 
-    void DataFileSystem::DirectoryInfo::Clear()
+    void DataFileRegistry::DirectoryInfo::Clear()
     {
         for ( auto& dir : m_directories )
         {
@@ -104,7 +104,7 @@ namespace EE
         m_files.clear();
     }
 
-    void DataFileSystem::DirectoryInfo::GetAllFiles( TVector<FileInfo const*>& files, bool recurseIntoChildDirectories ) const
+    void DataFileRegistry::DirectoryInfo::GetAllFiles( TVector<FileInfo const*>& files, bool recurseIntoChildDirectories ) const
     {
         for ( auto pFile : m_files )
         {
@@ -120,7 +120,7 @@ namespace EE
         }
     }
 
-    void DataFileSystem::DirectoryInfo::GetAllResourceOrDataFiles( TVector<FileInfo const*>& files, bool recurseIntoChildDirectories ) const
+    void DataFileRegistry::DirectoryInfo::GetAllResourceOrDataFiles( TVector<FileInfo const*>& files, bool recurseIntoChildDirectories ) const
     {
         for ( auto pFile : m_files )
         {
@@ -143,13 +143,13 @@ namespace EE
 
     //-------------------------------------------------------------------------
 
-    DataFileSystem::~DataFileSystem()
+    DataFileRegistry::~DataFileRegistry()
     {
         EE_ASSERT( m_state == DatabaseState::Empty );
         EE_ASSERT( m_sourceDataDirectoryInfo.IsEmpty() && m_resourcesPerType.empty() && m_filesPerPath.empty() );
     }
 
-    float DataFileSystem::GetCacheBuildProgress() const
+    float DataFileRegistry::GetCacheBuildProgress() const
     {
         EE_ASSERT( IsBuildingCaches() );
 
@@ -165,7 +165,7 @@ namespace EE
 
     //-------------------------------------------------------------------------
 
-    void DataFileSystem::Initialize( TypeSystem::TypeRegistry const* pTypeRegistry, TaskSystem* pTaskSystem, FileSystem::Path const& rawResourceDirPath, FileSystem::Path const& compiledResourceDirPath )
+    void DataFileRegistry::Initialize( TypeSystem::TypeRegistry const* pTypeRegistry, TaskSystem* pTaskSystem, FileSystem::Path const& rawResourceDirPath, FileSystem::Path const& compiledResourceDirPath )
     {
         EE_ASSERT( m_pTypeRegistry == nullptr && pTypeRegistry != nullptr );
         EE_ASSERT( m_pTaskSystem == nullptr && pTaskSystem != nullptr );
@@ -204,7 +204,7 @@ namespace EE
         m_fileSystemWatcher.StartWatching( m_sourceDataDirPath );
     }
 
-    void DataFileSystem::Shutdown()
+    void DataFileRegistry::Shutdown()
     {
         CancelDatabaseBuild();
 
@@ -230,7 +230,7 @@ namespace EE
         m_pTypeRegistry = nullptr;
     }
 
-    bool DataFileSystem::Update()
+    bool DataFileRegistry::Update()
     {
         // Wait for rebuild to complete
         //-------------------------------------------------------------------------
@@ -292,14 +292,14 @@ namespace EE
 
     //-------------------------------------------------------------------------
 
-    void DataFileSystem::RequestRebuild()
+    void DataFileRegistry::RequestRebuild()
     {
         CancelDatabaseBuild();
         ClearDatabase();
         StartFilesystemCacheBuild();
     }
 
-    void DataFileSystem::ClearDatabase()
+    void DataFileRegistry::ClearDatabase()
     {
         m_resourcesPerType.clear();
         m_filesPerPath.clear();
@@ -309,7 +309,7 @@ namespace EE
         m_state = DatabaseState::Empty;
     }
 
-    void DataFileSystem::CancelDatabaseBuild()
+    void DataFileRegistry::CancelDatabaseBuild()
     {
         if ( m_pAsyncTask != nullptr )
         {
@@ -323,12 +323,12 @@ namespace EE
         }
     }
 
-    void DataFileSystem::HandleMassiveFileSystemChangeDetected()
+    void DataFileRegistry::HandleMassiveFileSystemChangeDetected()
     {
         RequestRebuild();
     }
 
-    void DataFileSystem::StartFilesystemCacheBuild()
+    void DataFileRegistry::StartFilesystemCacheBuild()
     {
         EE_ASSERT( m_state == DatabaseState::Empty );
         EE_ASSERT( m_pAsyncTask == nullptr );
@@ -338,7 +338,7 @@ namespace EE
 
         auto BuildFileSystemCache = [this] ( TaskSetPartition range, uint32_t threadnum )
         {
-            Threading::ScopeLock const sl( m_mutex );
+            Threading::ScopeLockWrite const sw( m_mutex );
 
             // Reset the resource type category and add an entry for for every known resource type
             //-------------------------------------------------------------------------
@@ -425,7 +425,7 @@ namespace EE
         m_pTaskSystem->ScheduleTask( m_pAsyncTask );
     }
 
-    void DataFileSystem::StartDataFileCacheBuild()
+    void DataFileRegistry::StartDataFileCacheBuild()
     {
         EE_ASSERT( m_state == DatabaseState::BuildingFileSystemCache );
         EE_ASSERT( m_pAsyncTask == nullptr );
@@ -435,7 +435,7 @@ namespace EE
 
         auto BuildDescriptorCache = [this] ( TaskSetPartition range, uint32_t threadnum )
         {
-            Threading::ScopeLock const sl( m_mutex );
+            Threading::ScopeLockWrite const sw( m_mutex );
 
             Log tempLog;
 
@@ -459,7 +459,7 @@ namespace EE
 
     //-------------------------------------------------------------------------
 
-    DataFileSystem::FileInfo const* DataFileSystem::GetFileEntry( DataPath const& dataPath ) const
+    DataFileRegistry::FileInfo const* DataFileRegistry::GetFileEntry( DataPath const& dataPath ) const
     {
         auto fileEntryIter = m_filesPerPath.find( dataPath );;
         if ( fileEntryIter != m_filesPerPath.end() )
@@ -470,7 +470,7 @@ namespace EE
         return  nullptr;
     }
 
-    TVector<DataFileSystem::FileInfo const*> DataFileSystem::GetAllResourceFileEntries( ResourceTypeID resourceTypeID, bool includeDerivedTypes ) const
+    TVector<DataFileRegistry::FileInfo const*> DataFileRegistry::GetAllResourceFileEntries( ResourceTypeID resourceTypeID, bool includeDerivedTypes ) const
     {
         EE_ASSERT( m_pTypeRegistry->IsRegisteredResourceType( resourceTypeID ) );
 
@@ -502,7 +502,7 @@ namespace EE
         return results;
     }
 
-    TVector<DataFileSystem::FileInfo const*> DataFileSystem::GetAllResourceFileEntriesFiltered( ResourceTypeID resourceTypeID, TFunction<bool( Resource::ResourceDescriptor const* )> const& filter, bool includeDerivedTypes /*= false */ ) const
+    TVector<DataFileRegistry::FileInfo const*> DataFileRegistry::GetAllResourceFileEntriesFiltered( ResourceTypeID resourceTypeID, TFunction<bool( Resource::ResourceDescriptor const* )> const& filter, bool includeDerivedTypes /*= false */ ) const
     {
         EE_ASSERT( m_pTypeRegistry->IsRegisteredResourceType( resourceTypeID ) );
 
@@ -550,7 +550,7 @@ namespace EE
         return results;
     }
 
-    TVector<DataFileSystem::FileInfo const*> DataFileSystem::GetAllDataFileEntries( DataFileExtension extension ) const
+    TVector<DataFileRegistry::FileInfo const*> DataFileRegistry::GetAllDataFileEntries( DataFileExtension extension ) const
     {
         EE_ASSERT( m_pTypeRegistry->IsRegisteredDataFileType( extension ) );
 
@@ -567,7 +567,7 @@ namespace EE
         return results;
     }
 
-    TVector<DataFileSystem::FileInfo const*> DataFileSystem::GetAllDataFileEntries() const
+    TVector<DataFileRegistry::FileInfo const*> DataFileRegistry::GetAllDataFileEntries() const
     {
         TVector<FileInfo const*> results;
 
@@ -582,7 +582,7 @@ namespace EE
         return results;
     }
 
-    bool DataFileSystem::DoesFileExist( DataPath const& path ) const
+    bool DataFileRegistry::DoesFileExist( DataPath const& path ) const
     {
         EE_ASSERT( path.IsValid() );
 
@@ -597,7 +597,7 @@ namespace EE
         }
     }
 
-    TVector<ResourceID> DataFileSystem::GetAllResourcesOfType( ResourceTypeID resourceTypeID, bool includeDerivedTypes ) const
+    TVector<ResourceID> DataFileRegistry::GetAllResourcesOfType( ResourceTypeID resourceTypeID, bool includeDerivedTypes ) const
     {
         EE_ASSERT( m_pTypeRegistry->IsRegisteredResourceType( resourceTypeID ) );
 
@@ -629,7 +629,7 @@ namespace EE
         return results;
     }
 
-    TVector<EE::ResourceID> DataFileSystem::GetAllResourcesOfTypeFiltered( ResourceTypeID resourceTypeID, TFunction<bool( Resource::ResourceDescriptor const* )> const& filter, bool includeDerivedTypes ) const
+    TVector<EE::ResourceID> DataFileRegistry::GetAllResourcesOfTypeFiltered( ResourceTypeID resourceTypeID, TFunction<bool( Resource::ResourceDescriptor const* )> const& filter, bool includeDerivedTypes ) const
     {
         EE_ASSERT( m_pTypeRegistry->IsRegisteredResourceType( resourceTypeID ) );
 
@@ -677,7 +677,7 @@ namespace EE
         return results;
     }
 
-    void DataFileSystem::GetAllResourcesThatDependOnFile( DataPath const& sourceFile, TVector<DataPath>& outCompileDependents, TVector<ResourceID>* pOutInstallDependents ) const
+    void DataFileRegistry::GetAllResourcesThatDependOnFile( DataPath const& sourceFile, TVector<DataPath>& outCompileDependents, TVector<ResourceID>* pOutInstallDependents ) const
     {
         EE_ASSERT( IsDataFileCacheBuilt() );
         EE_ASSERT( m_pAsyncTask == nullptr );
@@ -708,6 +708,8 @@ namespace EE
 
         auto SearchForDependencies = [this, &sourceFile, &compileDependenciesPerThread, &installDependenciesPerThread, shouldReturnInstallDependencies ] ( TaskSetPartition range, uint32_t threadNum )
         {
+            Threading::ScopeLockRead const sr( m_mutex );
+
             TVector<Resource::CompileDependency> compileDependencies;
             TVector<ResourceID> installDependencies;
 
@@ -786,7 +788,6 @@ namespace EE
         // Blocking async search
         //-------------------------------------------------------------------------
 
-        Threading::ScopeLock const sl( m_mutex );
         m_pAsyncTask = EE::New<AsyncTask>( (uint32_t) m_filesPerPath.size(), SearchForDependencies );
         m_pTaskSystem->ScheduleTask( m_pAsyncTask );
         m_pTaskSystem->WaitForTask( m_pAsyncTask );
@@ -803,7 +804,7 @@ namespace EE
         }
     }
 
-    void DataFileSystem::GetAllFilesThatReferenceFile( DataPath const& sourceFile, TVector<DataFileSystem::FileInfo const*>& outReferencers ) const
+    void DataFileRegistry::GetAllFilesThatReferenceFile( DataPath const& sourceFile, TVector<DataFileRegistry::FileInfo const*>& outReferencers ) const
     {
         EE_ASSERT( IsDataFileCacheBuilt() );
         EE_ASSERT( m_pAsyncTask == nullptr );
@@ -819,11 +820,13 @@ namespace EE
         //-------------------------------------------------------------------------
 
         uint32_t const numThreads = m_pTaskSystem->GetNumWorkers() + 1;
-        TVector<TInlineVector<DataFileSystem::FileInfo const*, 100>> referencersPerThread;
+        TVector<TInlineVector<DataFileRegistry::FileInfo const*, 100>> referencersPerThread;
         referencersPerThread.resize( numThreads );
 
         auto SearchForReferences = [this, &sourceFile, &referencersPerThread] ( TaskSetPartition range, uint32_t threadNum )
         {
+            Threading::ScopeLockRead const sr( m_mutex );
+
             auto iter = m_filesPerPath.begin();
             for ( uint32_t i = 0; i < range.start; i++ )
             {
@@ -855,7 +858,6 @@ namespace EE
         // Blocking async search
         //-------------------------------------------------------------------------
 
-        Threading::ScopeLock const sl( m_mutex );
         m_pAsyncTask = EE::New<AsyncTask>( (uint32_t) m_filesPerPath.size(), SearchForReferences );
         m_pTaskSystem->ScheduleTask( m_pAsyncTask );
         m_pTaskSystem->WaitForTask( m_pAsyncTask );
@@ -869,7 +871,7 @@ namespace EE
 
     //-------------------------------------------------------------------------
 
-    DataFileSystem::DirectoryInfo* DataFileSystem::FindDirectory( FileSystem::Path const& dirPathToFind )
+    DataFileRegistry::DirectoryInfo* DataFileRegistry::FindDirectory( FileSystem::Path const& dirPathToFind )
     {
         EE_ASSERT( dirPathToFind.IsDirectoryPath() );
 
@@ -903,7 +905,7 @@ namespace EE
         return pCurrentDir;
     }
 
-    DataFileSystem::DirectoryInfo* DataFileSystem::FindOrCreateDirectory( FileSystem::Path const& dirPathToFind )
+    DataFileRegistry::DirectoryInfo* DataFileRegistry::FindOrCreateDirectory( FileSystem::Path const& dirPathToFind )
     {
         EE_ASSERT( dirPathToFind.IsDirectoryPath() );
 
@@ -943,7 +945,7 @@ namespace EE
         return pCurrentDir;
     }
 
-    bool DataFileSystem::HasFileRecord( FileSystem::Path const& path ) const
+    bool DataFileRegistry::HasFileRecord( FileSystem::Path const& path ) const
     {
         DirectoryInfo const* pDirectory = FindDirectory( path.GetParentDirectory() );
         EE_ASSERT( pDirectory != nullptr );
@@ -960,7 +962,7 @@ namespace EE
         return false;
     }
 
-    DataFileSystem::FileInfo* DataFileSystem::AddFileRecord( FileSystem::Path const& path, bool shouldLoadDataFile )
+    DataFileRegistry::FileInfo* DataFileRegistry::AddFileRecord( FileSystem::Path const& path, bool shouldLoadDataFile )
     {
         auto const dataPath = DataPath( path, m_sourceDataDirPath );
         EE_ASSERT( dataPath.IsFilePath() );
@@ -1024,7 +1026,7 @@ namespace EE
         return pNewEntry;
     }
 
-    void DataFileSystem::RemoveFileRecord( FileSystem::Path const& path, bool fireDeletedEvent )
+    void DataFileRegistry::RemoveFileRecord( FileSystem::Path const& path, bool fireDeletedEvent )
     {
         DirectoryInfo* pDirectory = FindDirectory( path.GetParentDirectory() );
         EE_ASSERT( pDirectory != nullptr );
@@ -1079,191 +1081,202 @@ namespace EE
     // Watcher Events
     //-------------------------------------------------------------------------
 
-    void DataFileSystem::ProcessFileSystemChanges()
+    void DataFileRegistry::ProcessFileSystemChanges()
     {
         EE_ASSERT( m_pAsyncTask == nullptr );
 
-        Threading::ScopeLock const sl( m_mutex );
-
         auto const& fsEvents = m_fileSystemWatcher.GetFileSystemChangeEvents();
-        for ( auto const& fsEvent : fsEvents )
+        if ( fsEvents.empty() )
         {
-            switch ( fsEvent.m_type )
+            return;
+        }
+
+        // Process events
+        //-------------------------------------------------------------------------
+
+        {
+            Threading::ScopeLockWrite const sw( m_mutex );
+
+            for ( auto const& fsEvent : fsEvents )
             {
-                case FileSystem::Watcher::Event::FileCreated:
+                switch ( fsEvent.m_type )
                 {
-                    AddFileRecord( fsEvent.m_path, true );
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::FileDeleted:
-                {
-                    RemoveFileRecord( fsEvent.m_path );
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::FileRenamed:
-                {
-                    RemoveFileRecord( fsEvent.m_oldPath );
-
-                    // Handle renaming over existing file
-                    if ( HasFileRecord( fsEvent.m_path ) )
+                    case FileSystem::Watcher::Event::FileCreated:
                     {
-                        RemoveFileRecord( fsEvent.m_path, false );
+                        AddFileRecord( fsEvent.m_path, true );
                     }
-
-                    AddFileRecord( fsEvent.m_path, true );
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::FileModified:
-                {
-                    DirectoryInfo* pDirectory = FindDirectory( fsEvent.m_path.GetParentDirectory() );
-                    EE_ASSERT( pDirectory != nullptr );
-
-                    int32_t const numFiles = (int32_t) pDirectory->m_files.size();
-                    for ( int32_t i = 0; i < numFiles; i++ )
-                    {
-                        if ( pDirectory->m_files[i]->m_filePath == fsEvent.m_path )
-                        {
-                            if ( pDirectory->m_files[i]->IsResourceDescriptorFile() || pDirectory->m_files[i]->IsDataFile() )
-                            {
-                                Log log;
-                                pDirectory->m_files[i]->ReloadDataFile( *m_pTypeRegistry, log );
-                            }
-
-                            break;
-                        }
-                    }
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::DirectoryCreated:
-                {
-                    TVector<FileSystem::Path> foundPaths;
-                    if ( !FileSystem::GetDirectoryContents( fsEvent.m_path, foundPaths, FileSystem::DirectoryReaderOutput::OnlyFiles, FileSystem::DirectoryReaderMode::Recursive ) )
-                    {
-                        EE_HALT();
-                    }
-
-                    // If this is an empty directory, add to the directory list
-                    if ( foundPaths.empty() )
-                    {
-                        DirectoryInfo* pDirectory = FindOrCreateDirectory( fsEvent.m_path );
-                        EE_ASSERT( pDirectory != nullptr );
-                    }
-                    else // Add file records (this will automatically create the directory record)
-                    {
-                        for ( auto const& filePath : foundPaths )
-                        {
-                            AddFileRecord( filePath, true );
-                        }
-                    }
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::DirectoryDeleted:
-                {
-                    auto pParentDirectory = FindDirectory( fsEvent.m_path.GetParentDirectory() );
-                    EE_ASSERT( pParentDirectory != nullptr );
-
-                    int32_t const numDirectories = (int32_t) pParentDirectory->m_directories.size();
-                    for ( int32_t i = 0; i < numDirectories; i++ )
-                    {
-                        if ( pParentDirectory->m_directories[i].m_filePath == fsEvent.m_path )
-                        {
-                            // Delete all children and remove directory
-                            pParentDirectory->m_directories[i].Clear();
-                            pParentDirectory->m_directories.erase_unsorted( pParentDirectory->m_directories.begin() + i );
-                            break;
-                        }
-                    }
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::DirectoryRenamed:
-                {
-                    EE_ASSERT( fsEvent.m_oldPath.IsDirectoryPath() );
-                    EE_ASSERT( fsEvent.m_path.IsDirectoryPath() );
-
-                    DirectoryInfo* pDirectory = nullptr;
-
-                    // Check if the directory was also moved
-                    FileSystem::Path const oldParentPath = fsEvent.m_oldPath.GetParentDirectory();
-                    FileSystem::Path const newParentPath = fsEvent.m_path.GetParentDirectory();
-                    if ( oldParentPath != newParentPath )
-                    {
-                        auto pOldParentDirectory = FindDirectory( oldParentPath );
-                        EE_ASSERT( pOldParentDirectory != nullptr );
-
-                        auto pNewParentDirectory = FindOrCreateDirectory( newParentPath );
-                        EE_ASSERT( pNewParentDirectory );
-
-                        // Move directory to new parent
-                        //-------------------------------------------------------------------------
-
-                        bool directoryMoved = false;
-                        int32_t const numOldDirectories = (int32_t) pOldParentDirectory->m_directories.size();
-                        for ( int32_t i = 0; i < numOldDirectories; i++ )
-                        {
-                            if ( pOldParentDirectory->m_directories[i].m_filePath == fsEvent.m_oldPath )
-                            {
-                                pNewParentDirectory->m_directories.emplace_back( pOldParentDirectory->m_directories[i] );
-                                pOldParentDirectory->m_directories.erase_unsorted( pOldParentDirectory->m_directories.begin() + i );
-                                directoryMoved = true;
-                                break;
-                            }
-                        }
-
-                        EE_ASSERT( directoryMoved );
-
-                        // Update directory
-                        //-------------------------------------------------------------------------
-
-                        pDirectory = &pNewParentDirectory->m_directories.back();
-                    }
-                    else
-                    {
-                        pDirectory = FindDirectory( fsEvent.m_oldPath );
-                    }
+                    break;
 
                     //-------------------------------------------------------------------------
 
-                    EE_ASSERT( pDirectory != nullptr );
-                    pDirectory->ChangePath( m_sourceDataDirPath, fsEvent.m_path );
+                    case FileSystem::Watcher::Event::FileDeleted:
+                    {
+                        RemoveFileRecord( fsEvent.m_path );
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    case FileSystem::Watcher::Event::FileRenamed:
+                    {
+                        RemoveFileRecord( fsEvent.m_oldPath );
+
+                        // Handle renaming over existing file
+                        if ( HasFileRecord( fsEvent.m_path ) )
+                        {
+                            RemoveFileRecord( fsEvent.m_path, false );
+                        }
+
+                        AddFileRecord( fsEvent.m_path, true );
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    case FileSystem::Watcher::Event::FileModified:
+                    {
+                        DirectoryInfo* pDirectory = FindDirectory( fsEvent.m_path.GetParentDirectory() );
+                        EE_ASSERT( pDirectory != nullptr );
+
+                        int32_t const numFiles = (int32_t) pDirectory->m_files.size();
+                        for ( int32_t i = 0; i < numFiles; i++ )
+                        {
+                            if ( pDirectory->m_files[i]->m_filePath == fsEvent.m_path )
+                            {
+                                if ( pDirectory->m_files[i]->IsResourceDescriptorFile() || pDirectory->m_files[i]->IsDataFile() )
+                                {
+                                    Log log;
+                                    pDirectory->m_files[i]->ReloadDataFile( *m_pTypeRegistry, log );
+                                }
+
+                                break;
+                            }
+                        }
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    case FileSystem::Watcher::Event::DirectoryCreated:
+                    {
+                        TVector<FileSystem::Path> foundPaths;
+                        if ( !FileSystem::GetDirectoryContents( fsEvent.m_path, foundPaths, FileSystem::DirectoryReaderOutput::OnlyFiles, FileSystem::DirectoryReaderMode::Recursive ) )
+                        {
+                            EE_HALT();
+                        }
+
+                        // If this is an empty directory, add to the directory list
+                        if ( foundPaths.empty() )
+                        {
+                            DirectoryInfo* pDirectory = FindOrCreateDirectory( fsEvent.m_path );
+                            EE_ASSERT( pDirectory != nullptr );
+                        }
+                        else // Add file records (this will automatically create the directory record)
+                        {
+                            for ( auto const& filePath : foundPaths )
+                            {
+                                AddFileRecord( filePath, true );
+                            }
+                        }
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    case FileSystem::Watcher::Event::DirectoryDeleted:
+                    {
+                        auto pParentDirectory = FindDirectory( fsEvent.m_path.GetParentDirectory() );
+                        EE_ASSERT( pParentDirectory != nullptr );
+
+                        int32_t const numDirectories = (int32_t) pParentDirectory->m_directories.size();
+                        for ( int32_t i = 0; i < numDirectories; i++ )
+                        {
+                            if ( pParentDirectory->m_directories[i].m_filePath == fsEvent.m_path )
+                            {
+                                // Delete all children and remove directory
+                                pParentDirectory->m_directories[i].Clear();
+                                pParentDirectory->m_directories.erase_unsorted( pParentDirectory->m_directories.begin() + i );
+                                break;
+                            }
+                        }
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    case FileSystem::Watcher::Event::DirectoryRenamed:
+                    {
+                        EE_ASSERT( fsEvent.m_oldPath.IsDirectoryPath() );
+                        EE_ASSERT( fsEvent.m_path.IsDirectoryPath() );
+
+                        DirectoryInfo* pDirectory = nullptr;
+
+                        // Check if the directory was also moved
+                        FileSystem::Path const oldParentPath = fsEvent.m_oldPath.GetParentDirectory();
+                        FileSystem::Path const newParentPath = fsEvent.m_path.GetParentDirectory();
+                        if ( oldParentPath != newParentPath )
+                        {
+                            auto pOldParentDirectory = FindDirectory( oldParentPath );
+                            EE_ASSERT( pOldParentDirectory != nullptr );
+
+                            auto pNewParentDirectory = FindOrCreateDirectory( newParentPath );
+                            EE_ASSERT( pNewParentDirectory );
+
+                            // Move directory to new parent
+                            //-------------------------------------------------------------------------
+
+                            bool directoryMoved = false;
+                            int32_t const numOldDirectories = (int32_t) pOldParentDirectory->m_directories.size();
+                            for ( int32_t i = 0; i < numOldDirectories; i++ )
+                            {
+                                if ( pOldParentDirectory->m_directories[i].m_filePath == fsEvent.m_oldPath )
+                                {
+                                    pNewParentDirectory->m_directories.emplace_back( pOldParentDirectory->m_directories[i] );
+                                    pOldParentDirectory->m_directories.erase_unsorted( pOldParentDirectory->m_directories.begin() + i );
+                                    directoryMoved = true;
+                                    break;
+                                }
+                            }
+
+                            EE_ASSERT( directoryMoved );
+
+                            // Update directory
+                            //-------------------------------------------------------------------------
+
+                            pDirectory = &pNewParentDirectory->m_directories.back();
+                        }
+                        else
+                        {
+                            pDirectory = FindDirectory( fsEvent.m_oldPath );
+                        }
+
+                        //-------------------------------------------------------------------------
+
+                        EE_ASSERT( pDirectory != nullptr );
+                        pDirectory->ChangePath( m_sourceDataDirPath, fsEvent.m_path );
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    case FileSystem::Watcher::Event::DirectoryModified:
+                    {
+                        // Do Nothing
+                    }
+                    break;
+
+                    //-------------------------------------------------------------------------
+
+                    default:
+                    {
+                        EE_UNREACHABLE_CODE();
+                    }
+                    break;
                 }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                case FileSystem::Watcher::Event::DirectoryModified:
-                {
-                    // Do Nothing
-                }
-                break;
-
-                //-------------------------------------------------------------------------
-
-                default:
-                {
-                    EE_UNREACHABLE_CODE();
-                }
-                break;
             }
         }
 
+        // Dispatch Notifications
         //-------------------------------------------------------------------------
 
         if ( m_fileCacheUpdatedEvent.HasBoundUsers() )

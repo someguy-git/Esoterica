@@ -21,7 +21,7 @@ namespace EE::Resource
 
         FileSystem::Path const& GetSourceDataDirectory() const { return m_pSettings->m_sourceDataDirectoryPath; }
         FileSystem::Path const& GetCompiledDataDirectory() const { return m_pSettings->m_compiledResourceDirectoryPath; }
-        FileSystem::Path const& GetPackagedDataDirectory() const { return m_pSettings->m_packagedBuildCompiledResourceDirectoryPath; }
+        FileSystem::Path const& GetShippingDataDirectory() const { return m_pSettings->m_shippingBuildCompiledResourceDirectoryPath; }
 
     public:
 

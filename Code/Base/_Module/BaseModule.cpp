@@ -2,7 +2,7 @@
 #include "Base/Threading/Threading.h"
 #include "Base/Network/NetworkSystem.h"
 #include "Base/Resource/ResourceProviders/ResourceProvider_Network.h"
-#include "Base/Resource/ResourceProviders/ResourceProvider_Package.h"
+#include "Base/Resource/ResourceProviders/ResourceProvider_Local.h"
 #include "Base/Resource/Settings/Settings_Resource.h"
 #include "Base/Render/RHI.h"
 
@@ -111,11 +111,7 @@ namespace EE
         Resource::ResourceSettings const* pResourceSettings = m_settingsRegistry.GetSettings<Resource::ResourceSettings>();
         EE_ASSERT( pResourceSettings != nullptr );
     
-        if ( pResourceSettings->UsePackagedResourceProvider() )
-        {
-            m_pResourceProvider = EE::New<Resource::PackagedResourceProvider>( *pResourceSettings );
-        }
-        else
+        if ( pResourceSettings->UseNetworkResourceProvider() )
         {
             #if EE_DEVELOPMENT_TOOLS
             if ( !EnsureResourceServerIsRunning( pResourceSettings->m_resourceServerExecutablePath, pResourceSettings->m_resourceServerNetworkAddress ) )
@@ -128,6 +124,10 @@ namespace EE
             #else
             EE_UNREACHABLE_CODE();
             #endif
+        }
+        else
+        {
+            m_pResourceProvider = EE::New<Resource::ResourceProvider>( *pResourceSettings );
         }
 
         if ( m_pResourceProvider == nullptr )

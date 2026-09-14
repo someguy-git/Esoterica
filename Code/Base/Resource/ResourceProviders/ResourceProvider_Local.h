@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Base/Resource/ResourceProvider.h"
+#include "Base/Resource/IResourceProvider.h"
 
 //-------------------------------------------------------------------------
 
@@ -10,12 +10,12 @@ namespace EE::Resource
 
     //-------------------------------------------------------------------------
 
-    class EE_BASE_API PackagedResourceProvider final : public ResourceProvider
+    class EE_BASE_API ResourceProvider final : public IResourceProvider
     {
 
     public:
 
-        PackagedResourceProvider( ResourceSettings const& settings ) : ResourceProvider( settings ) {}
+        ResourceProvider( ResourceSettings const& settings ) : IResourceProvider( settings ) {}
         virtual bool IsReady() const override final;
 
     private:

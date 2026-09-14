@@ -41,7 +41,9 @@ namespace EE::Render
 
                 for ( StaticMeshComponent const* pComponent : m_staticMeshComponents )
                 {
-                    if ( ( pComponent->m_meshInstanceProxy.m_instanceHandle.m_offset <= pr.m_instanceID ) && ( pr.m_instanceID < ( pComponent->m_meshInstanceProxy.m_instanceHandle.m_offset + pComponent->m_meshInstanceProxy.m_instanceHandle.m_size ) ) )
+                    HandleAllocator<uint32_t>::Handle const& instanceRootHandle = pComponent->m_meshInstanceRootProxy.m_instanceHandle;
+
+                    if ( instanceRootHandle.IsValid() && ( instanceRootHandle.m_offset <= pr.m_instanceID ) && ( pr.m_instanceID < ( instanceRootHandle.m_offset + instanceRootHandle.m_size ) ) )
                     {
                         return PickingID( pComponent->GetEntityID().m_value, pComponent->GetID().m_value, pr.m_sortPriority, pr.m_intersectionDistance );
                     }
@@ -49,7 +51,9 @@ namespace EE::Render
 
                 for ( SkeletalMeshComponent const* pComponent : m_skeletalMeshComponents )
                 {
-                    if ( ( pComponent->m_meshInstanceProxy.m_instanceHandle.m_offset <= pr.m_instanceID ) && ( pr.m_instanceID < ( pComponent->m_meshInstanceProxy.m_instanceHandle.m_offset + pComponent->m_meshInstanceProxy.m_instanceHandle.m_size ) ) )
+                    HandleAllocator<uint32_t>::Handle const& instanceRootHandle = pComponent->m_meshInstanceRootProxy.m_instanceHandle;
+
+                    if ( instanceRootHandle.IsValid() && ( instanceRootHandle.m_offset <= pr.m_instanceID ) && ( pr.m_instanceID < ( instanceRootHandle.m_offset + instanceRootHandle.m_size ) ) )
                     {
                         return PickingID( pComponent->GetEntityID().m_value, pComponent->GetID().m_value, pr.m_sortPriority, pr.m_intersectionDistance );
                     }
@@ -77,6 +81,94 @@ namespace EE::Render
 
         pickingData.DeduplicateAndSort();
     }
+
+    void RenderWorldSystem::SetOutlinedComponents( TArrayView<ComponentID> componentIDs )
+    {
+        // De-duplicate and check if the set of component IDs is actually different
+        //-------------------------------------------------------------------------
+
+        TVector<ComponentID> uniqueIDs;
+        for ( ComponentID ID : componentIDs )
+        {
+            VectorEmplaceBackUnique( uniqueIDs, ID );
+        }
+
+        if ( uniqueIDs.size() == m_outlinedComponents.size() )
+        {
+            bool allElementsMatch = true;
+            for ( ComponentID ID : uniqueIDs )
+            {
+                if ( !VectorContains( m_outlinedComponents, ID ) )
+                {
+                    allElementsMatch = false;
+                    break;
+                }
+            }
+
+            if ( allElementsMatch )
+            {
+                return;
+            }
+        }
+
+        m_outlinedComponents.swap( uniqueIDs );
+
+        // Set highlighted components
+        //-------------------------------------------------------------------------
+
+        if ( m_meshInstanceRootOutlineData.size() != m_deviceRenderWorld.GetNumMeshInstanceRootPages() )
+        {
+            m_meshInstanceRootOutlineData.resize( m_deviceRenderWorld.GetNumMeshInstanceRootPages(), 0 );
+        }
+
+        Memory::MemsetZero( m_meshInstanceRootOutlineData.data(), m_meshInstanceRootOutlineData.size() * sizeof( uint64_t ) );
+
+        auto SetOutlineBit = [this] ( uint32_t rootIndex )
+        {
+            EE_ASSERT( rootIndex < m_meshInstanceRootOutlineData.size() * 64 );
+            m_meshInstanceRootOutlineData[rootIndex >> 6] |= ( 1ULL << ( rootIndex & 63U ) );
+        };
+
+        for ( ComponentID const& componentID : m_outlinedComponents )
+        {
+            if ( StaticMeshComponent const* const* ppComponent = m_staticMeshComponents.FindItem( componentID ) )
+            {
+                HandleAllocator<uint32_t>::Handle const& instanceHandle = ( *ppComponent )->m_meshInstanceRootProxy.m_instanceHandle;
+                if ( instanceHandle.IsValid() )
+                {
+                    SetOutlineBit( instanceHandle.m_offset );
+                }
+                continue;
+            }
+
+            if ( SkeletalMeshComponent const* const* ppComponent = m_skeletalMeshComponents.FindItem( componentID ) )
+            {
+                HandleAllocator<uint32_t>::Handle const& instanceHandle = ( *ppComponent )->m_meshInstanceRootProxy.m_instanceHandle;
+                if ( instanceHandle.IsValid() )
+                {
+                    SetOutlineBit( instanceHandle.m_offset );
+                }
+            }
+        }
+
+        m_meshInstanceRootOutlineNeedUpdate = true;
+    }
+
+    void RenderWorldSystem::ClearOutlinedComponents()
+    {
+        if ( m_outlinedComponents.empty() )
+        {
+            return;
+        }
+
+        if ( !m_meshInstanceRootOutlineData.empty() )
+        {
+            Memory::MemsetZero( m_meshInstanceRootOutlineData.data(), m_meshInstanceRootOutlineData.size() * sizeof( uint64_t ) );
+        }
+
+        m_meshInstanceRootOutlineNeedUpdate = true;
+        m_outlinedComponents.clear();
+    }
     #endif
 
     void RenderWorldSystem::InitializeSystem( SystemRegistry const& systemRegistry )
@@ -86,7 +178,9 @@ namespace EE::Render
 
         m_deviceRenderWorld.Initialize( m_pTaskSystem, m_pRenderSystem );
 
-        m_materialShaderClusterCapacity.Initialize();
+        #if EE_DEVELOPMENT_TOOLS
+        m_meshInstanceRootOutlineBuffer.Initialize( m_pRenderSystem->GetContextRHI(), true );
+        #endif
 
         // TODO: Need to make it a resource instead of allocating it here
         static constexpr uint32_t g_RadianceResolution = 128;
@@ -118,11 +212,13 @@ namespace EE::Render
     {
         m_pRenderSystem->WaitAllQueuesIdle();
 
-        m_materialShaderClusterCapacity.Shutdown();
-
         EE_ASSERT( m_numShadowCastingDirectionalLights == 0 );
 
         m_deviceRenderWorld.Shutdown( m_pRenderSystem );
+
+        #if EE_DEVELOPMENT_TOOLS
+        m_meshInstanceRootOutlineBuffer.Shutdown( m_pRenderSystem->GetContextRHI() );
+        #endif
 
         RHI::DestroyTexture( m_pRenderSystem->GetContextRHI(), eastl::move( m_pRadianceTexture ) );
         RHI::DestroyTexture( m_pRenderSystem->GetContextRHI(), eastl::move( m_pIrradianceTexture ) );
@@ -140,17 +236,9 @@ namespace EE::Render
         {
             if ( pStaticMeshComponent->HasMeshResourceSet() )
             {
-                EE_ASSERT( !pStaticMeshComponent->m_meshInstanceProxy.m_instanceHandle.IsValid() );
+                EE_ASSERT( pStaticMeshComponent->m_meshInstanceProxies.empty() );
 
-                Mesh const* pStaticMesh = pStaticMeshComponent->GetMesh();
-                AddMeshClusters( pStaticMesh, pStaticMeshComponent->GetResolvedMaterials() );
-
-                uint32_t instanceDataSizeInBytes = pStaticMeshComponent->ComputeInstanceDataSizeInBytes();
-
-                pStaticMeshComponent->m_meshInstanceRootProxy = m_deviceRenderWorld.AllocateMeshInstanceRoot( ( instanceDataSizeInBytes + 63 ) / 64 );
-                pStaticMeshComponent->m_meshInstanceProxy = m_deviceRenderWorld.AllocateMeshInstance( pStaticMesh->GetNumSubmeshes() );
-
-                pStaticMeshComponent->QueueInitializeMeshInstance( &m_deviceRenderWorld );
+                pStaticMeshComponent->QueueMeshInstanceInitialize( &m_deviceRenderWorld, m_pRenderSystem->GetPlaceholderMaterial() );
 
                 if ( pStaticMeshComponent->m_viewLayers.IsFlagSet( ViewLayer::GlobalEnvironmentMap ) )
                 {
@@ -160,30 +248,19 @@ namespace EE::Render
                 m_staticMeshComponents.Add( pStaticMeshComponent );
                 m_staticMeshComponentInstanceUpdateQueue.Bind( pStaticMeshComponent, pStaticMeshComponent->GetInstanceDataUpdateSignal() );
 
-                if ( instanceDataSizeInBytes )
-                {
-                    pStaticMeshComponent->GetInstanceDataUpdateSignal()->Send( pStaticMeshComponent );
-                }
+                pStaticMeshComponent->GetInstanceDataUpdateSignal()->Send( pStaticMeshComponent );
             }
         }
         else if ( SkeletalMeshComponent* pSkeletalMeshComponent = TryCast<SkeletalMeshComponent>( pComponent ) )
         {
             if ( pSkeletalMeshComponent->HasMeshResourceSet() )
             {
-                EE_ASSERT( !pSkeletalMeshComponent->m_meshInstanceProxy.m_instanceHandle.IsValid() );
+                EE_ASSERT( pSkeletalMeshComponent->m_meshInstanceProxies.empty() );
                 EE_ASSERT( !pSkeletalMeshComponent->m_skinningProxy.IsValid() );
 
-                SkeletalMesh const* pSkeletalMesh = pSkeletalMeshComponent->GetMesh();
-                AddMeshClusters( pSkeletalMesh, pSkeletalMeshComponent->GetResolvedMaterials() );
+                pSkeletalMeshComponent->m_skinningProxy = m_deviceRenderWorld.AllocateSkinningInstance( pSkeletalMeshComponent->GetMesh()->GetNumBones() );
 
-                uint32_t instanceDataSizeInBytes = pSkeletalMeshComponent->ComputeInstanceDataSizeInBytes();
-
-                pSkeletalMeshComponent->m_skinningProxy = m_deviceRenderWorld.AllocateSkinningInstance( pSkeletalMesh->GetNumBones() );
-
-                pSkeletalMeshComponent->m_meshInstanceRootProxy = m_deviceRenderWorld.AllocateMeshInstanceRoot( ( instanceDataSizeInBytes + 63 ) / 64 );
-                pSkeletalMeshComponent->m_meshInstanceProxy = m_deviceRenderWorld.AllocateMeshInstance( pSkeletalMesh->GetNumSubmeshes() );
-
-                pSkeletalMeshComponent->QueueInitializeMeshInstance( &m_deviceRenderWorld );
+                pSkeletalMeshComponent->QueueMeshInstanceInitialize( &m_deviceRenderWorld, m_pRenderSystem->GetPlaceholderMaterial() );
                 pSkeletalMeshComponent->UpdateSkinningProxy();
 
                 if ( pSkeletalMeshComponent->m_viewLayers.IsFlagSet( ViewLayer::GlobalEnvironmentMap ) )
@@ -194,10 +271,7 @@ namespace EE::Render
                 m_skeletalMeshComponents.Add( pSkeletalMeshComponent );
                 m_skeletalMeshComponentInstanceUpdateQueue.Bind( pSkeletalMeshComponent, pSkeletalMeshComponent->GetInstanceDataUpdateSignal() );
 
-                if ( instanceDataSizeInBytes )
-                {
-                    pSkeletalMeshComponent->GetInstanceDataUpdateSignal()->Send( pSkeletalMeshComponent );
-                }
+                pSkeletalMeshComponent->GetInstanceDataUpdateSignal()->Send( pSkeletalMeshComponent );
             }
         }
 
@@ -252,14 +326,18 @@ namespace EE::Render
         {
             if ( pStaticMeshComponent->HasMeshResourceSet() )
             {
-                EE_ASSERT( pStaticMeshComponent->m_meshInstanceProxy.m_instanceHandle.IsValid() );
-
-                RemoveMeshClusters( pStaticMeshComponent->GetMesh(), pStaticMeshComponent->GetResolvedMaterials() );
+                EE_ASSERT( !pStaticMeshComponent->m_meshInstanceProxies.empty() );
 
                 m_staticMeshComponentInstanceUpdateQueue.Unbind( pStaticMeshComponent, pStaticMeshComponent->GetInstanceDataUpdateSignal() );
 
                 m_staticMeshComponents.Remove( pStaticMeshComponent->GetID() );
-                m_deviceRenderWorld.DeallocateMeshInstance( eastl::move( pStaticMeshComponent->m_meshInstanceProxy ) );
+
+                for ( auto& meshInstanceProxyPair : pStaticMeshComponent->m_meshInstanceProxies )
+                {
+                    m_deviceRenderWorld.DeallocateMeshInstance( eastl::move( meshInstanceProxyPair.second ) );
+                }
+                pStaticMeshComponent->m_meshInstanceProxies.clear();
+
                 m_deviceRenderWorld.DeallocateMeshInstanceRoot( eastl::move( pStaticMeshComponent->m_meshInstanceRootProxy ) );
 
                 if ( pStaticMeshComponent->m_viewLayers.IsFlagSet( ViewLayer::GlobalEnvironmentMap ) )
@@ -272,16 +350,20 @@ namespace EE::Render
         {
             if ( pSkeletalMeshComponent->HasMeshResourceSet() )
             {
-                EE_ASSERT( pSkeletalMeshComponent->m_meshInstanceProxy.IsValid() );
+                EE_ASSERT( !pSkeletalMeshComponent->m_meshInstanceProxies.empty() );
                 EE_ASSERT( pSkeletalMeshComponent->m_skinningProxy.IsValid() );
-
-                RemoveMeshClusters( pSkeletalMeshComponent->GetMesh(), pSkeletalMeshComponent->GetResolvedMaterials() );
 
                 m_skeletalMeshComponentInstanceUpdateQueue.Unbind( pSkeletalMeshComponent, pSkeletalMeshComponent->GetInstanceDataUpdateSignal() );
 
                 m_skeletalMeshComponents.Remove( pSkeletalMeshComponent->GetID() );
                 m_deviceRenderWorld.DeallocateSkinningInstance( eastl::move( pSkeletalMeshComponent->m_skinningProxy ) );
-                m_deviceRenderWorld.DeallocateMeshInstance( eastl::move( pSkeletalMeshComponent->m_meshInstanceProxy ) );
+
+                for ( auto& meshInstanceProxyPair : pSkeletalMeshComponent->m_meshInstanceProxies )
+                {
+                    m_deviceRenderWorld.DeallocateMeshInstance( eastl::move( meshInstanceProxyPair.second ) );
+                }
+                pSkeletalMeshComponent->m_meshInstanceProxies.clear();
+
                 m_deviceRenderWorld.DeallocateMeshInstanceRoot( eastl::move( pSkeletalMeshComponent->m_meshInstanceRootProxy ) );
 
                 if ( pSkeletalMeshComponent->m_viewLayers.IsFlagSet( ViewLayer::GlobalEnvironmentMap ) )
@@ -330,60 +412,6 @@ namespace EE::Render
         }
     }
 
-    void RenderWorldSystem::AddMeshClusters( Mesh const* pMeshResource, TInlineVector<Material const*, 50> const& resolvedMaterials )
-    {
-        int32_t const numSubmeshes = pMeshResource->GetNumSubmeshes();
-        EE_ASSERT( resolvedMaterials.size() == numSubmeshes );
-
-        for ( int32_t submeshIdx = 0; submeshIdx < numSubmeshes; ++submeshIdx )
-        {
-            uint32_t const geometryIdx = pMeshResource->GetSubmeshGeometryIndex( submeshIdx );
-
-            Material const* pMaterial = resolvedMaterials[submeshIdx];
-            if ( pMaterial == nullptr )
-            {
-                pMaterial = m_pRenderSystem->GetPlaceholderMaterial();
-            }
-
-            EE_ASSERT( pMaterial != nullptr );
-
-            int32_t shaderIndex = pMaterial->GetShaderIndex();
-            EE_ASSERT( shaderIndex != -1 );
-
-            Geometry const& geometry = pMeshResource->GetGeometry()[geometryIdx];
-            uint32_t const requiredClusterCapacity = geometry.GetNumClusters();
-
-            m_materialShaderClusterCapacity.AddShaderClusters( shaderIndex, requiredClusterCapacity );
-        }
-    }
-
-    void RenderWorldSystem::RemoveMeshClusters( Mesh const* pMeshResource, TInlineVector<Material const*, 50> const& resolvedMaterials )
-    {
-        int32_t const numSubmeshes = pMeshResource->GetNumSubmeshes();
-        EE_ASSERT( resolvedMaterials.size() == numSubmeshes );
-
-        for ( int32_t submeshIdx = 0; submeshIdx < pMeshResource->GetNumSubmeshes(); ++submeshIdx )
-        {
-            uint32_t const geometryIdx = pMeshResource->GetSubmeshGeometryIndex( submeshIdx );
-
-            Material const* pMaterial = resolvedMaterials[submeshIdx];
-            if ( pMaterial == nullptr )
-            {
-                pMaterial = m_pRenderSystem->GetPlaceholderMaterial();
-            }
-
-            EE_ASSERT( pMaterial != nullptr );
-
-            int32_t shaderIndex = pMaterial->GetShaderIndex();
-            EE_ASSERT( shaderIndex != -1 );
-
-            Geometry const& geometry = pMeshResource->GetGeometry()[geometryIdx];
-            uint32_t const requiredClusterCapacity = geometry.GetNumClusters();
-
-            m_materialShaderClusterCapacity.RemoveShaderClusters( shaderIndex, requiredClusterCapacity );
-        }
-    }
-
     void RenderWorldSystem::UpdateDeviceResources()
     {
         EE_PROFILE_FUNCTION_RENDER();
@@ -401,11 +429,7 @@ namespace EE::Render
 
                 auto CopyBufferMemory = [pStaticMeshComponent] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
                 {
-                    uint32_t instanceDataSizeInBytes = pStaticMeshComponent->ComputeInstanceDataSizeInBytes();
-                    EE_ASSERT( pStaticMeshComponent->m_meshInstanceRootProxy.m_instanceHandle.m_size == ( ( instanceDataSizeInBytes + 63 ) / 64 ) );
-                    EE_ASSERT( ( ( instanceDataSizeInBytes + 63 ) / 64 ) * 64 == dstSize );
-
-                    pStaticMeshComponent->WriteInstanceData( { reinterpret_cast<uint32_t*>( pDstMemory_WriteCombined ), instanceDataSizeInBytes / sizeof( uint32_t ) } );
+                    pStaticMeshComponent->WriteInstanceData( { reinterpret_cast<uint32_t*>( pDstMemory_WriteCombined ), sizeof( ShaderTypes::MeshInstanceRoot ) / sizeof( uint32_t ) } );
                 };
 
                 m_pRenderSystem->QueueBufferUpdate
@@ -415,7 +439,7 @@ namespace EE::Render
                     pStaticMeshComponent->m_meshInstanceRootProxy.m_instanceHandle.m_offset * sizeof( ShaderTypes::MeshInstanceRoot ),
                     pStaticMeshComponent->m_meshInstanceRootProxy.m_instanceHandle.m_size * sizeof( ShaderTypes::MeshInstanceRoot )
                 );
-                pStaticMeshComponent->QueueInitializeMeshInstance( &m_deviceRenderWorld );
+                pStaticMeshComponent->QueueMeshInstanceInitialize( &m_deviceRenderWorld, m_pRenderSystem->GetPlaceholderMaterial() );
             }
 
             m_staticMeshComponentInstanceUpdateQueue.ClearIgnoredComponents();
@@ -432,11 +456,7 @@ namespace EE::Render
 
                 auto CopyBufferMemory = [pSkeletalMeshComponent] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
                 {
-                    uint32_t instanceDataSizeInBytes = pSkeletalMeshComponent->ComputeInstanceDataSizeInBytes();
-                    EE_ASSERT( pSkeletalMeshComponent->m_meshInstanceRootProxy.m_instanceHandle.m_size == ( ( instanceDataSizeInBytes + 63 ) / 64 ) );
-                    EE_ASSERT( ( ( instanceDataSizeInBytes + 63 ) / 64 ) * 64 == dstSize );
-
-                    pSkeletalMeshComponent->WriteInstanceData( { reinterpret_cast<uint32_t*>( pDstMemory_WriteCombined ), instanceDataSizeInBytes / sizeof( uint32_t ) } );
+                    pSkeletalMeshComponent->WriteInstanceData( { reinterpret_cast<uint32_t*>( pDstMemory_WriteCombined ), sizeof( ShaderTypes::MeshInstanceRoot ) / sizeof( uint32_t ) } );
                 };
 
                 m_pRenderSystem->QueueBufferUpdate
@@ -446,14 +466,82 @@ namespace EE::Render
                     pSkeletalMeshComponent->m_meshInstanceRootProxy.m_instanceHandle.m_offset * sizeof( ShaderTypes::MeshInstanceRoot ),
                     pSkeletalMeshComponent->m_meshInstanceRootProxy.m_instanceHandle.m_size * sizeof( ShaderTypes::MeshInstanceRoot )
                 );
-                pSkeletalMeshComponent->QueueInitializeMeshInstance( &m_deviceRenderWorld );
+                pSkeletalMeshComponent->QueueMeshInstanceInitialize( &m_deviceRenderWorld, m_pRenderSystem->GetPlaceholderMaterial() );
             }
 
             m_skeletalMeshComponentInstanceUpdateQueue.ClearIgnoredComponents();
         }
 
         m_deviceRenderWorld.UpdateDeviceResources_AfterInstanceInitialize( m_pRenderSystem );
+
+        //-------------------------------------------------------------------------
+
+        #if EE_DEVELOPMENT_TOOLS
+        if ( m_meshInstanceRootOutlineData.size() != m_deviceRenderWorld.GetNumMeshInstanceRootPages() )
+        {
+            m_meshInstanceRootOutlineData.resize( m_deviceRenderWorld.GetNumMeshInstanceRootPages(), 0 );
+            m_meshInstanceRootOutlineNeedUpdate = true;
+        }
+
+        auto UpdateBuffer_MeshInstanceRootOutline = [this] ( RHI::Buffer* && pOldBuffer, size_t newBufferSize )
+        {
+            m_meshInstanceRootOutlineNeedUpdate = true;
+
+            RHI::BufferParameters outlineBufferParameters = {};
+            outlineBufferParameters.m_bufferSize = newBufferSize;
+            outlineBufferParameters.m_bufferStride = sizeof( uint64_t );
+            outlineBufferParameters.m_format = RHI::DataFormat::RG32_UInt;
+            outlineBufferParameters.m_debugName = "RenderWorldSystem MeshInstanceRoot Outline Buffer";
+
+            RHI::Buffer* pOutlineBuffer = RHI::CreateBuffer( m_pRenderSystem->GetContextRHI(), outlineBufferParameters );
+
+            if ( pOldBuffer )
+            {
+                m_pRenderSystem->QueueResourceDelete( eastl::move( pOldBuffer ) );
+            }
+
+            return pOutlineBuffer;
+        };
+
+        m_meshInstanceRootOutlineBuffer.UpdateDeviceResources
+        (
+            m_meshInstanceRootOutlineData.size() * sizeof( uint64_t ),
+            UpdateBuffer_MeshInstanceRootOutline
+        );
+
+        if ( m_meshInstanceRootOutlineNeedUpdate )
+        {
+            EE_ASSERT( m_meshInstanceRootOutlineBuffer.m_pBuffer != nullptr );
+            EE_ASSERT( m_meshInstanceRootOutlineBuffer.m_pBuffer->m_size >= m_meshInstanceRootOutlineData.size() * sizeof( uint64_t ) );
+
+            size_t const outlineBufferSize = m_meshInstanceRootOutlineData.size() * sizeof( uint64_t );
+            uint64_t const* pOutlineBits = m_meshInstanceRootOutlineData.data();
+
+            auto CopyBufferMemory = [pOutlineBits, outlineBufferSize] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
+            {
+                EE_ASSERT( dstSize == outlineBufferSize );
+                Memory::CopyToWriteCombined( pDstMemory_WriteCombined, pOutlineBits, outlineBufferSize );
+            };
+
+            m_pRenderSystem->QueueBufferUpdate
+            (
+                CopyBufferMemory,
+                m_meshInstanceRootOutlineBuffer.m_pBuffer,
+                0,
+                outlineBufferSize
+            );
+
+            m_meshInstanceRootOutlineNeedUpdate = false;
+        }
+        #endif
     }
+
+    #if EE_DEVELOPMENT_TOOLS
+    RHI::BufferHandle RenderWorldSystem::GetMeshInstanceRootOutlineBufferHandle() const
+    {
+        return RHI::GetBufferHandle( m_meshInstanceRootOutlineBuffer.m_pBuffer, RHI::DescriptorTypeFlags::Buffer );
+    }
+    #endif
 
     RHI::TextureHandle RenderWorldSystem::GetRadianceTextureHandle() const
     {

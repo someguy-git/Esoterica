@@ -125,7 +125,7 @@ namespace EE::EntityModel
 {
     class EE_ENGINE_API EntityCollection : public Resource::IResource
     {
-        EE_RESOURCE( "ec", "Entity Collection", Colors::GreenYellow, 11, false );
+        EE_RESOURCE( "ec", "Entity Collection", Colors::GreenYellow, 12, false );
         EE_SERIALIZE( m_entityDescriptors, m_entityLookupMap, m_entitySpatialAttachmentInfo );
 
         friend class EntityCollectionLoader;
@@ -249,12 +249,17 @@ namespace EE::EntityModel
         void Clear();
         void SetCollectionData( TVector<EntityDescriptor>&& entityDescriptors );
         void GetAllReferencedResources( TVector<ResourceID>& outReferencedResources ) const;
+        void RemoveInvalidComponentsAndSystems( TypeSystem::TypeRegistry const& typeRegistry, Log& log, bool removeDevOnlyTypes );
+        void RebuildLookupMapAndSpatialAttachmentInfo() { BuildLookupMap(); BuildSpatialAttachmentInfo(); }
         inline TVector<EntityDescriptor>& GetMutableEntityDescriptors() { return m_entityDescriptors; }
         #endif
 
     protected:
 
-        void RebuildLookupMap();
+        #if EE_DEVELOPMENT_TOOLS
+        void BuildLookupMap();
+        void BuildSpatialAttachmentInfo();
+        #endif
 
     protected:
 
@@ -279,7 +284,7 @@ namespace EE::EntityModel
 
     class EE_ENGINE_API EntityMapDescriptor final : public EntityCollection
     {
-        EE_RESOURCE( "map", "Map", Colors::SpringGreen, 8, false );
+        EE_RESOURCE( "map", "Map", Colors::SpringGreen, 9, false );
         EE_SERIALIZE( EE_SERIALIZE_BASE( EntityCollection ) );
 
         friend class EntityCollectionCompiler;

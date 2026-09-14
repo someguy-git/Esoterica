@@ -152,9 +152,10 @@ namespace EE::Animation
             else
             {
                 int8_t const sourceMaskBufferIdx = maskBufferIndices[m_tasks[i].m_sourceTaskIdx];
-                BoneMaskBuffer* pSourceBuffer = pool.GetBuffer( sourceMaskBufferIdx );
-
                 int8_t const targetMaskBufferIdx = maskBufferIndices[m_tasks[i].m_targetTaskIdx];
+                EE_ASSERT( sourceMaskBufferIdx != targetMaskBufferIdx );
+
+                BoneMaskBuffer* pSourceBuffer = pool.GetBuffer( sourceMaskBufferIdx );
                 BoneMaskBuffer* pTargetBuffer = pool.GetBuffer( targetMaskBufferIdx );
 
                 maskBufferIndices.emplace_back( targetMaskBufferIdx );

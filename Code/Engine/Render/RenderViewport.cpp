@@ -31,6 +31,9 @@ namespace EE::Render
         for ( uint32_t frameIndex = 0; frameIndex < RHI::MaxPendingFrames; ++frameIndex )
         {
             m_debugCommandsBuffers[frameIndex].Initialize( pContextRHI, true );
+            m_debugCommandsBuffersOutline[frameIndex].Initialize( pContextRHI, true );
+            m_debugMeshArgumentBuffersOutline[frameIndex].Initialize( pContextRHI, true );
+            m_debugMeshParametersBuffersOutline[frameIndex].Initialize( pContextRHI, true );
             m_meshParametersBuffers[frameIndex].Initialize( pContextRHI, true );
             m_meshArgumentBuffers[frameIndex].Initialize( pContextRHI, true );
         }
@@ -39,24 +42,24 @@ namespace EE::Render
 
     void RenderViewport::Shutdown( RHI::Context* pContextRHI )
     {
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_ForwardShading_ColorTexture ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_ForwardShading_DepthTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_forwardShading_colorTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_forwardShading_depthTexture ) );
 
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_DepthDownsample2 ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_DepthDownsample4 ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_DepthDownsample8 ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_depthDownsample2 ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_depthDownsample4 ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_depthDownsample8 ) );
 
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_StencilTexture ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_EdgesTexture ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_BlendTexture ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_ResultTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_stencilTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_edgesTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_blendTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_SMAA_resultTexture ) );
 
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_ResultTextureNoisy0 ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_ResultTextureNoisy1 ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_ResultTexture ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_ResultTextureHalfResolution ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_EdgesTexture ) );
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_PrefilterDepthTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_resultTextureNoisy0 ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_resultTextureNoisy1 ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_resultTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_resultTextureHalfResolution ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_edgesTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_GTAO_prefilterDepthTexture ) );
 
         if ( !IsStandalone() )
         {
@@ -77,6 +80,9 @@ namespace EE::Render
         for ( uint32_t frameIndex = 0; frameIndex < RHI::MaxPendingFrames; ++frameIndex )
         {
             m_debugCommandsBuffers[frameIndex].Shutdown( pContextRHI );
+            m_debugCommandsBuffersOutline[frameIndex].Shutdown( pContextRHI );
+            m_debugMeshArgumentBuffersOutline[frameIndex].Shutdown( pContextRHI );
+            m_debugMeshParametersBuffersOutline[frameIndex].Shutdown( pContextRHI );
             RHI::DestroyBuffer( pContextRHI, eastl::move( m_shaderDebugDrawBuffers[frameIndex] ) );
             RHI::DestroyBuffer( pContextRHI, eastl::move( m_debugParametersBuffers[frameIndex] ) );
 
@@ -89,7 +95,12 @@ namespace EE::Render
         m_instancePickingResultsBuffer.Shutdown( pContextRHI );
         m_debugDrawPickingResultsBuffer.Shutdown( pContextRHI );
 
-        RHI::DestroyTexture( pContextRHI, eastl::move( m_DebugDraw_DepthTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_debugDraw_depthTexture ) );
+
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_editorOutline_depthTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_editorOutline_idTexture ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_editorOutline_JFA_Texture0 ) );
+        RHI::DestroyTexture( pContextRHI, eastl::move( m_editorOutline_JFA_Texture1 ) );
         #endif
     }
 

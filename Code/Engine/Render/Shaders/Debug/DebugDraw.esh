@@ -29,6 +29,7 @@ struct HLSL_ALIGN_STRUCT ShaderDebugDrawBuffer
 #define DEBUG_DRAW_COMMAND_FLAG_SKIP        ( 1U << 5U )
 
 #define DEBUG_DRAW_COMMAND_FLAG_DISABLE_AA  ( 1U << 10U )
+#define DEBUG_DRAW_COMMAND_FLAG_OUTLINE     ( 1U << 11U )
 
 struct HLSL_ALIGN_STRUCT DebugDrawPointCommand
 {
@@ -114,7 +115,7 @@ struct HLSL_ALIGN_STRUCT DebugDrawParameters // THIS IS IN A CONSTANT BUFFER! 16
 {
 // 16-byte row
     float3                          m_cameraPosition;
-    uint                            m_padding0;
+    uint                            m_objectIDOffset;   // Offset applied to debug draw object IDs to avoid collisions with mesh instances
     
 // 16-byte row
     float3                          m_cameraForwardDirection;

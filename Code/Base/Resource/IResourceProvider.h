@@ -18,14 +18,14 @@ namespace EE::Resource
 
     //-------------------------------------------------------------------------
 
-    class EE_BASE_API ResourceProvider
+    class EE_BASE_API IResourceProvider
     {
 
     public:
 
-        ResourceProvider( ResourceSettings const& settings ) : m_settings( settings ) {}
-        ResourceProvider( ResourceProvider const& ) = delete;
-        virtual ~ResourceProvider() {}
+        IResourceProvider( ResourceSettings const& settings ) : m_settings( settings ) {}
+        IResourceProvider( IResourceProvider const& ) = delete;
+        virtual ~IResourceProvider() {}
 
         // Is fully ready to service resource requests
         virtual bool IsReady() const = 0;

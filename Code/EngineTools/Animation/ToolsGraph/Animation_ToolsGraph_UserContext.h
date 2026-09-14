@@ -7,7 +7,7 @@
 
 //-------------------------------------------------------------------------
 
-namespace EE { class DataFileSystem; }
+namespace EE { class DataFileRegistry; }
 namespace EE::TypeSystem { class TypeInfo; }
 
 //-------------------------------------------------------------------------
@@ -79,7 +79,7 @@ namespace EE::Animation
 
     public:
 
-        DataFileSystem const*                                               m_pDataFileSystem = nullptr;
+        DataFileRegistry const*                                             m_pDataFileRegistry = nullptr;
         StringID                                                            m_selectedVariationID;
         VariationHierarchy const*                                           m_pVariationHierarchy = nullptr;
         GraphInstance*                                                      m_pGraphInstance = nullptr;

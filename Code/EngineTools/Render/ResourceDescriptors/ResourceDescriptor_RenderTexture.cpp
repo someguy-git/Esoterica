@@ -1,6 +1,6 @@
 ﻿#include "ResourceDescriptor_RenderTexture.h"
 #include "EngineTools/Core/ToolsContext.h"
-#include "EngineTools/FileSystem/DataFileSystem.h"
+#include "EngineTools/FileSystem/DataFileRegistry.h"
 #include "EngineTools/PropertyGrid/PropertyGridTypeEditingRules.h"
 
 //-------------------------------------------------------------------------
@@ -16,7 +16,7 @@ namespace EE::Render
             static StringID const s_sourcePathsPropertyID = StringID( "m_sourcePaths" );
             if ( propertyID == s_sourcePathsPropertyID && m_pTypeInstance->m_textureGroup.IsValid() )
             {
-                if ( DataFileSystem::FileInfo const* pTextureGroupFile = m_pToolsContext->m_pDataFileSystem->GetFileEntry( m_pTypeInstance->m_textureGroup ); pTextureGroupFile && pTextureGroupFile->IsDataFile() )
+                if ( DataFileRegistry::FileInfo const* pTextureGroupFile = m_pToolsContext->m_pDataFileRegistry->GetFileEntry( m_pTypeInstance->m_textureGroup ); pTextureGroupFile && pTextureGroupFile->IsDataFile() )
                 {
                     TextureGroup const* pTextureGroup = static_cast<TextureGroup const*>( pTextureGroupFile->m_pDataFile );
                     return InlineString( pTextureGroup->m_fileMasks[arrayElementIdx].m_channelName.c_str() );

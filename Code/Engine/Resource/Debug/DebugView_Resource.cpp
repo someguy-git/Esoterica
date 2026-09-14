@@ -232,7 +232,7 @@ namespace EE::Resource
     {
         EE_ASSERT( pSettings != nullptr && pResourceSystem != nullptr );
 
-        if ( pSettings->UsePackagedResourceProvider() )
+        if ( !pSettings->UseNetworkResourceProvider() )
         {
             return;
         }

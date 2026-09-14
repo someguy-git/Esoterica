@@ -65,6 +65,12 @@ namespace EE
         // Clear the currently set hit-test ID
         void ClearHitTestID() { m_commandBuffer.ClearHitTestID(); }
 
+        // Start drawing an outline on all subsequently drawn commands
+        void BeginDrawOutline( bool enableOutlines = true ) { m_commandBuffer.SetDrawOutline( enableOutlines ); }
+
+        // Stop outlining drawn objects 
+        void EndDrawOutline() { m_commandBuffer.SetDrawOutline( false ); }
+
         //-------------------------------------------------------------------------
         // Basic Primitives
         //-------------------------------------------------------------------------

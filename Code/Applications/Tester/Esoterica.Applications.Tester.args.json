@@ -12,7 +12,7 @@
     },
     {
       "Id": "d860cb11-74d2-47c8-b08a-f3272f2d012b",
-      "Command": "-packaged"
+      "Command": "-usecompileddata"
     },
     {
       "Id": "03192fbc-dc1c-49cf-a924-1a5c1b826eb5",

@@ -4,7 +4,7 @@
 #include "EngineTools/Resource/ResourceDescriptor.h"
 #include "EngineTools/Resource/ResourceCompilerRegistry.h"
 #include "Engine/Entity/EntityDescriptors.h"
-#include "Base/Resource/ResourceProviders/ResourceNetworkMessages.h"
+#include "Base/Resource/ResourceNetworkMessages.h"
 #include "Base/FileSystem/FileSystemUtils.h"
 #include "Base/Profiling.h"
 
@@ -42,7 +42,7 @@ namespace EE::Resource
             m_workers.emplace_back( m_context, i + 1 );
         }
 
-        // Packaging
+        // Publishing
         //-------------------------------------------------------------------------
 
         RefreshAvailableMapList();
@@ -105,7 +105,7 @@ namespace EE::Resource
         UpdateNetwork();
         UpdateResaveOfDataFiles();
         UpdateFileSystemWatcher();
-        UpdatePackaging();
+        UpdatePublishing();
         UpdateRecompilationBlockers();
 
         ProcessPendingRequests();
@@ -123,7 +123,7 @@ namespace EE::Resource
 
     bool ResourceServer::IsBusy() const
     {
-        if ( IsPackaging() || !m_pendingRequests.empty() )
+        if ( IsPublishing() || !m_pendingRequests.empty() )
         {
             return true;
         }
@@ -538,7 +538,7 @@ namespace EE::Resource
         m_cleanupRequested = false;
     }
 
-    // Packaging
+    // Publishing
     //-------------------------------------------------------------------------
 
     void ResourceServer::RefreshAvailableMapList()
@@ -550,55 +550,55 @@ namespace EE::Resource
         {
             for ( auto const& foundMapPath : results )
             {
-                m_allMaps.emplace_back( ResourceID( DataPath( foundMapPath, m_context.GetSourceDataDirectory() ) ) );
+                m_allMaps.emplace_back( DataPath( foundMapPath, m_context.GetSourceDataDirectory() ) );
             }
         }
     }
 
-    void ResourceServer::AddMapToPackagingList( ResourceID mapResourceID )
+    void ResourceServer::AddMapToPublishingList( ResourceID mapResourceID )
     {
         EE_ASSERT( mapResourceID.GetResourceTypeID() == EntityModel::EntityMapDescriptor::GetStaticResourceTypeID() );
-        VectorEmplaceBackUnique( m_mapsToBePackaged, mapResourceID );
+        VectorEmplaceBackUnique( m_mapsToBePublished, mapResourceID );
     }
 
-    void ResourceServer::RemoveMapFromPackagingList( ResourceID mapResourceID )
+    void ResourceServer::RemoveMapFromPublishingList( ResourceID mapResourceID )
     {
         EE_ASSERT( mapResourceID.GetResourceTypeID() == EntityModel::EntityMapDescriptor::GetStaticResourceTypeID() );
-        m_mapsToBePackaged.erase_first_unsorted( mapResourceID );
+        m_mapsToBePublished.erase_first_unsorted( mapResourceID );
     }
 
-    bool ResourceServer::CanStartPackaging() const
+    bool ResourceServer::CanStartPublishing() const
     {
-        return ( m_packagingStage == PackagingStage::None || m_packagingStage == PackagingStage::Complete ) && !m_mapsToBePackaged.empty();
+        return ( m_publishingStage == PublishingStage::None || m_publishingStage == PublishingStage::Complete ) && !m_mapsToBePublished.empty();
     }
 
-    void ResourceServer::StartPackaging()
+    void ResourceServer::StartPublishing()
     {
-        EE_ASSERT( CanStartPackaging() );
-        m_context.m_taskSystem.ScheduleTask( &m_packagingTask );
-        m_packagingStage = PackagingStage::Preparing;
+        EE_ASSERT( CanStartPublishing() );
+        m_context.m_taskSystem.ScheduleTask( &m_publishingTask );
+        m_publishingStage = PublishingStage::Preparing;
     }
 
-    float ResourceServer::GetPackagingProgress() const
+    float ResourceServer::GetPublishingProgress() const
     {
-        switch ( m_packagingStage )
+        switch ( m_publishingStage )
         {
-            case PackagingStage::None:
+            case PublishingStage::None:
             {
                 return 1.0f;
             }
             break;
 
-            case PackagingStage::Preparing:
+            case PublishingStage::Preparing:
             {
                 return 0.1f;
             }
             break;
 
-            case PackagingStage::Packaging:
+            case PublishingStage::Publishing:
             {
                 float numComplete = 0.0f;
-                for ( auto pRequest : m_packagingRequests )
+                for ( auto pRequest : m_publishingRequests )
                 {
                     if ( pRequest->IsComplete() )
                     {
@@ -606,12 +606,12 @@ namespace EE::Resource
                     }
                 }
 
-                float const percentageComplete = numComplete / m_packagingRequests.size();
+                float const percentageComplete = numComplete / m_publishingRequests.size();
                 return 0.05f + ( 0.95f * percentageComplete );
             }
             break;
 
-            case PackagingStage::Complete:
+            case PublishingStage::Complete:
             {
                 return 1.0f;
             }
@@ -621,27 +621,27 @@ namespace EE::Resource
         return 0.0f;
     }
 
-    void ResourceServer::UpdatePackaging()
+    void ResourceServer::UpdatePublishing()
     {
         EE_PROFILE_FUNCTION();
 
-        if ( m_packagingStage == PackagingStage::Preparing )
+        if ( m_publishingStage == PublishingStage::Preparing )
         {
-            if ( m_packagingTask.GetIsComplete() )
+            if ( m_publishingTask.GetIsComplete() )
             {
-                for ( auto const& resourceID : m_packagingRuntimeDependencies )
+                for ( auto const& resourceID : m_publishingRuntimeDependencies )
                 {
-                    m_packagingRequests.emplace_back( TryAddPendingRequest( RequestOrigin::Package, resourceID ) );
+                    m_publishingRequests.emplace_back( TryAddPendingRequest( RequestOrigin::Publish, resourceID ) );
                 }
 
-                m_packagingStage = PackagingStage::Packaging;
+                m_publishingStage = PublishingStage::Publishing;
             }
         }
-        else if ( m_packagingStage == PackagingStage::Packaging )
+        else if ( m_publishingStage == PublishingStage::Publishing )
         {
             bool isComplete = true;
 
-            for ( auto pRequest : m_packagingRequests )
+            for ( auto pRequest : m_publishingRequests )
             {
                 if ( !pRequest->IsComplete() )
                 {
@@ -652,46 +652,46 @@ namespace EE::Resource
 
             if ( isComplete )
             {
-                m_packagingRequests.clear();
-                m_packagingStage = PackagingStage::Complete;
+                m_publishingRequests.clear();
+                m_publishingStage = PublishingStage::Complete;
             }
         }
     }
 
-    void ResourceServer::RunPackagingTask()
+    void ResourceServer::RunPublishingTask()
     {
         BaseModule baseModule;
         for ( auto pResourcePtr : baseModule.GetModuleResources() )
         {
-            m_packagingRuntimeDependencies.emplace_back( pResourcePtr->GetResourceID() );
+            m_publishingRuntimeDependencies.emplace_back( pResourcePtr->GetResourceID() );
         }
 
         EngineModule engineModule;
         for ( auto pResourcePtr : engineModule.GetModuleResources() )
         {
-            m_packagingRuntimeDependencies.emplace_back( pResourcePtr->GetResourceID() );
+            m_publishingRuntimeDependencies.emplace_back( pResourcePtr->GetResourceID() );
         }
 
         GameModule gameModule;
         for ( auto pResourcePtr : gameModule.GetModuleResources() )
         {
-            m_packagingRuntimeDependencies.emplace_back( pResourcePtr->GetResourceID() );
+            m_publishingRuntimeDependencies.emplace_back( pResourcePtr->GetResourceID() );
         }
 
         //-------------------------------------------------------------------------
 
-        for ( auto const& mapID : m_mapsToBePackaged )
+        for ( auto const& mapID : m_mapsToBePublished )
         {
             if ( !mapID.IsValid() )
             {
                 continue;
             }
 
-            EnqueueResourceForPackaging( mapID );
+            EnqueueResourceForPublishing( mapID );
         }
     }
 
-    void ResourceServer::EnqueueResourceForPackaging( ResourceID const& resourceID )
+    void ResourceServer::EnqueueResourceForPublishing( ResourceID const& resourceID )
     {
         EE_ASSERT( resourceID.IsValid() );
 
@@ -705,8 +705,8 @@ namespace EE::Resource
         auto pCompiler = m_context.m_pCompilerRegistry->GetCompilerForResourceType( resourceID.GetResourceTypeID() );
         if ( pCompiler != nullptr )
         {
-            // Add resource for packaging
-            VectorEmplaceBackUnique( m_packagingRuntimeDependencies, resourceID );
+            // Add resource for publishing
+            VectorEmplaceBackUnique( m_publishingRuntimeDependencies, resourceID );
 
             // Read the descriptor
             FileSystem::Path const descriptorFilePath = resourceID.GetFileSystemPath( m_context.GetSourceDataDirectory() );
@@ -736,7 +736,7 @@ namespace EE::Resource
             // Recursively enqueue all referenced resources
             for ( auto const& referenceResourceID : referencedResources )
             {
-                EnqueueResourceForPackaging( referenceResourceID );
+                EnqueueResourceForPublishing( referenceResourceID );
             }
 
             // Free the descriptor

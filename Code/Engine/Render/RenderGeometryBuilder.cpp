@@ -313,29 +313,25 @@ namespace EE::Render
         return aabb;
     }
 
-    uint32_t GeometryBuilder::BuildAndAppendClusters( Blob& clusterVertices, size_t clusterVertexStride, TAlignedVector<uint32_t>& clusterTriangles, Blob& clusters ) const
+    uint32_t GeometryBuilder::BuildClusters( AlignedBlob& packedMeshData ) const
     {
         EE_ASSERT( m_vertexStride );
-        EE_ASSERT( ( clusterVertices.size() % clusterVertexStride ) == 0 );
+        EE_ASSERT( packedMeshData.size() >= sizeof( MeshHeader ) );
 
         TVector<meshopt_Meshlet> tempMeshlets;
         TVector<uint32_t>        tempMeshletVertices;
         TVector<uint8_t>         tempMeshletTriangles;
 
-        size_t   meshClusterOffset = clusters.size() / sizeof( MeshCluster );
         uint32_t meshNumClusters = 0;
-
-        uint32_t meshBaseVertex = uint32_t( clusterVertices.size() / clusterVertexStride );
-        uint32_t sectionBaseVertex = 0;
 
         // Generate clusters
         //-------------------------------------------------------------------------
 
-        size_t const meshletUpperBound = meshopt_buildMeshletsBound( m_indices.size(), Geometry::MaxClusterVertices, Geometry::MaxClusterTriangles );
+        size_t const meshletUpperBound = meshopt_buildMeshletsBound( m_indices.size(), MeshCluster::MaxVerticesPerCluster, MeshCluster::MaxTrianglesPerCluster );
 
         tempMeshlets.resize( meshletUpperBound );
-        tempMeshletVertices.resize( meshletUpperBound * Geometry::MaxClusterVertices );
-        tempMeshletTriangles.resize( meshletUpperBound * Geometry::MaxClusterTriangles * 3 );
+        tempMeshletVertices.resize( meshletUpperBound * MeshCluster::MaxTrianglesPerCluster );
+        tempMeshletTriangles.resize( meshletUpperBound * MeshCluster::MaxTrianglesPerCluster * 3 );
 
         size_t const numMeshlets = meshopt_buildMeshletsSpatial
         (
@@ -347,11 +343,17 @@ namespace EE::Render
             reinterpret_cast<float const*>( m_vertices.data() ),
             m_vertices.size() / m_vertexStride,
             m_vertexStride,
-            Geometry::MaxClusterVertices,
-            Geometry::MaxClusterTriangles,
-            Geometry::MaxClusterTriangles,
+            MeshCluster::MaxVerticesPerCluster,
+            MeshCluster::MaxTrianglesPerCluster,
+            MeshCluster::MaxTrianglesPerCluster,
             1.0F
         );
+
+        EE_ASSERT( numMeshlets > 0 );
+        if ( numMeshlets == 0 )
+        {
+            return 0;
+        }
 
         meshopt_Meshlet const& lastMeshlet = tempMeshlets[numMeshlets - 1];
 
@@ -362,16 +364,20 @@ namespace EE::Render
         tempMeshletVertices.resize( sectionTotalNumIndices );
         tempMeshletTriangles.resize( sectionTotalNumTriangleIndices );
 
-        size_t const currentClusterOffset = clusters.size() / sizeof( MeshCluster );
-        clusters.resize( ( currentClusterOffset + numMeshlets ) * sizeof( MeshCluster ) );
+        size_t const clusterBaseOffset = packedMeshData.size();
+        packedMeshData.resize( clusterBaseOffset + numMeshlets * sizeof( MeshCluster ) );
+        memset( packedMeshData.data() + clusterBaseOffset, 0, numMeshlets * sizeof( MeshCluster ) );
 
         meshNumClusters += uint32_t( numMeshlets );
 
-        // Optimize and compute exponent
+        size_t dataCursor = packedMeshData.size();
+        EE_ASSERT( ( dataCursor % 8 ) == 0 );
+
+        // Optimize meshlets and compute the shared exponent
         //-------------------------------------------------------------------------
 
-        int32_t const MinExponent = -20;
-        int32_t const OffsetBits = 16;
+        int32_t const MinExponent = -13;
+        int32_t const MaxOffsetBits = 16;
 
         int32_t compressedVertexExponent = MinExponent;
 
@@ -400,8 +406,8 @@ namespace EE::Render
             Float3 meshletBoxMin = meshletCenter - Vector( meshletBounds.radius );
             Float3 meshletBoxMax = meshletCenter + Vector( meshletBounds.radius );
 
-            int32_t currentExponent = meshopt_computePositionExponent( &meshletBoxMin.m_x, &meshletBoxMax.m_x, MinExponent, OffsetBits );
-            compressedVertexExponent = Math::Max( compressedVertexExponent, currentExponent );
+            int32_t const clusterExponent = meshopt_computePositionExponent( &meshletBoxMin.m_x, &meshletBoxMax.m_x, MinExponent, MaxOffsetBits );
+            compressedVertexExponent = Math::Max( compressedVertexExponent, clusterExponent );
         }
 
         float const vertexScale = ldexpf( 1.0F, compressedVertexExponent );
@@ -428,6 +434,8 @@ namespace EE::Render
 
             for ( size_t clusterVertexIndex = 0; clusterVertexIndex < meshlet.vertex_count; ++clusterVertexIndex )
             {
+                EE_ASSERT( meshlet.vertex_offset + clusterVertexIndex < tempMeshletVertices.size() );
+
                 uint32_t sourceVertexIndex = tempMeshletVertices[meshlet.vertex_offset + clusterVertexIndex];
                 PositionAttribute srcPositionAttribute = GetPositionAttribute( sourceVertexIndex );
 
@@ -441,112 +449,236 @@ namespace EE::Render
                 compressedVertexAnchor.m_z = Math::Min( compressedVertexAnchor.m_z, compressedPosition.m_z );
             }
 
-            // Quantize cluster center as well
-            Int3 compressedClusterCenter = {};
-            compressedClusterCenter.m_x = Math::RoundToInt32( meshletBounds.center[0] / vertexScale );
-            compressedClusterCenter.m_y = Math::RoundToInt32( meshletBounds.center[1] / vertexScale );
-            compressedClusterCenter.m_z = Math::RoundToInt32( meshletBounds.center[2] / vertexScale );
+            // Quantize the cluster AABB, the anchor is the AABB min so all offsets are non-negative
+            Int3 compressedAABBMin = {};
+            Int3 compressedAABBMax = {};
+            compressedAABBMin.m_x = Math::RoundToInt32( ( meshletBounds.center[0] - meshletBounds.radius ) / vertexScale );
+            compressedAABBMin.m_y = Math::RoundToInt32( ( meshletBounds.center[1] - meshletBounds.radius ) / vertexScale );
+            compressedAABBMin.m_z = Math::RoundToInt32( ( meshletBounds.center[2] - meshletBounds.radius ) / vertexScale );
+            compressedAABBMax.m_x = Math::RoundToInt32( ( meshletBounds.center[0] + meshletBounds.radius ) / vertexScale );
+            compressedAABBMax.m_y = Math::RoundToInt32( ( meshletBounds.center[1] + meshletBounds.radius ) / vertexScale );
+            compressedAABBMax.m_z = Math::RoundToInt32( ( meshletBounds.center[2] + meshletBounds.radius ) / vertexScale );
 
-            compressedVertexAnchor.m_x = Math::Min( compressedVertexAnchor.m_x, compressedClusterCenter.m_x );
-            compressedVertexAnchor.m_y = Math::Min( compressedVertexAnchor.m_y, compressedClusterCenter.m_y );
-            compressedVertexAnchor.m_z = Math::Min( compressedVertexAnchor.m_z, compressedClusterCenter.m_z );
+            compressedVertexAnchor.m_x = Math::Min( compressedVertexAnchor.m_x, compressedAABBMin.m_x );
+            compressedVertexAnchor.m_y = Math::Min( compressedVertexAnchor.m_y, compressedAABBMin.m_y );
+            compressedVertexAnchor.m_z = Math::Min( compressedVertexAnchor.m_z, compressedAABBMin.m_z );
 
-            // Triangle buffer
-            uint32_t const currentClusterTriangleOffset = uint32_t( clusterTriangles.size() );
+            // Compute the bits per axis needed to store ( position - anchor ), up to 16 bits per axis
+            uint32_t numPositionBitsX = 1;
+            uint32_t numPositionBitsY = 1;
+            uint32_t nymPositionBitsZ = 1;
+            for ( size_t clusterVertexIndex = 0; clusterVertexIndex < meshlet.vertex_count; ++clusterVertexIndex )
+            {
+                Int3 const offset = compressedVertexPositions[clusterVertexIndex] - compressedVertexAnchor;
+                numPositionBitsX = Math::Max( numPositionBitsX, MeshCluster::GetNumBitsRequired( uint32_t( offset.m_x ) ) );
+                numPositionBitsY = Math::Max( numPositionBitsY, MeshCluster::GetNumBitsRequired( uint32_t( offset.m_y ) ) );
+                nymPositionBitsZ = Math::Max( nymPositionBitsZ, MeshCluster::GetNumBitsRequired( uint32_t( offset.m_z ) ) );
+            }
+            EE_ASSERT( numPositionBitsX <= 16 && numPositionBitsY <= 16 && nymPositionBitsZ <= 16 );
+
+            EE_ASSERT( clusterBaseOffset + ( meshletIndex + 1 ) * sizeof( MeshCluster ) <= packedMeshData.size() );
+            EE_ASSERT( meshlet.vertex_count > 0 && meshlet.vertex_count <= MeshCluster::MaxVerticesPerCluster );
+            EE_ASSERT( meshlet.triangle_count > 0 && meshlet.triangle_count <= MeshCluster::MaxTrianglesPerCluster );
+            EE_ASSERT( meshlet.vertex_offset + meshlet.vertex_count <= tempMeshletVertices.size() );
+            EE_ASSERT( meshlet.triangle_offset + meshlet.triangle_count * 3 <= tempMeshletTriangles.size() );
+
+            size_t const positionBitsSize = ( ( meshlet.vertex_count * ( numPositionBitsX + numPositionBitsY + nymPositionBitsZ ) + 31 ) & ~size_t( 31 ) ) / 8;
+            size_t const normalsOffset = positionBitsSize;
+            size_t const normalsSize = meshlet.vertex_count * sizeof( MeshCluster::VertexNormalAttribute );
+            size_t const uvsOffset = normalsOffset + ( ( normalsSize + 3 ) & ~size_t( 3 ) );
+            size_t const uvsSize = meshlet.vertex_count * m_numTextureCoordinateAttributes * sizeof( MeshCluster::TextureCoordinateAttribute );
+            size_t const colorsOffset = uvsOffset + uvsSize;
+            size_t const colorsSize = meshlet.vertex_count * m_numColorAttributes * sizeof( MeshCluster::VertexColorAttribute );
+            size_t const skinningOffset = colorsOffset + colorsSize;
+            size_t const skinningSize = meshlet.vertex_count * m_numSkinningAttributes * sizeof( MeshCluster::SkinningAttribute );
+            size_t const triangleDataSize = MeshCluster::GetTriangleDataSize( meshlet.triangle_count );
+
+            size_t const clusterDataSize = ( skinningOffset + skinningSize + triangleDataSize + 7 ) & ~size_t( 7 );
+            EE_ASSERT( ( clusterDataSize % 8 ) == 0 );
+            EE_ASSERT( dataCursor <= UINT32_MAX );
+            size_t const requiredSize = dataCursor + clusterDataSize;
+            if ( requiredSize > packedMeshData.size() )
+            {
+                packedMeshData.resize( requiredSize );
+            }
+
+            MeshCluster* pCluster = reinterpret_cast<MeshCluster*>( packedMeshData.data() + clusterBaseOffset + meshletIndex * sizeof( MeshCluster ) );
+
+            uint8_t* const pClusterData = packedMeshData.data() + dataCursor;
+            uint8_t* const pPositionBits = pClusterData;
+            uint8_t* const pNormals = pClusterData + normalsOffset;
+            uint8_t* const pUVs = pClusterData + uvsOffset;
+            uint8_t* const pColors = pClusterData + colorsOffset;
+            uint8_t* const pSkinning = pClusterData + skinningOffset;
+            uint8_t* const pTriangleBits = pClusterData + skinningOffset + skinningSize;
+
+            uint8_t const* const pBufferEnd = packedMeshData.data() + packedMeshData.size();
+            EE_ASSERT( pPositionBits + positionBitsSize + sizeof( uint64_t ) <= pBufferEnd );
+            EE_ASSERT( pTriangleBits + triangleDataSize <= pBufferEnd );
+            EE_ASSERT( pNormals + normalsSize <= pBufferEnd );
+            EE_ASSERT( pUVs + uvsSize <= pBufferEnd );
+            EE_ASSERT( pColors + colorsSize <= pBufferEnd );
+            EE_ASSERT( pSkinning + skinningSize <= pBufferEnd );
+
+            pCluster->SetNumVertices( uint32_t( meshlet.vertex_count ) );
+            pCluster->SetNumTriangles( uint32_t( meshlet.triangle_count ) );
+            pCluster->SetNumSkinningAttributes( m_numSkinningAttributes );
+            pCluster->SetNumTextureCoordinateAttributes( m_numTextureCoordinateAttributes );
+            pCluster->SetNumColorAttributes( m_numColorAttributes );
+            pCluster->SetNumPositionBitsX( numPositionBitsX );
+            pCluster->SetNumPositionBitsY( numPositionBitsY );
+            pCluster->SetNumPositionBitsZ( nymPositionBitsZ );
+            pCluster->SetAnchorAndExponent( compressedVertexAnchor, compressedVertexExponent );
+            pCluster->SetAABB( compressedAABBMin, compressedAABBMax );
+            pCluster->SetDataOffsetIn8ByteBlocks( uint32_t( dataCursor / 8 ) );
+
+            // Position bits
+            //-------------------------------------------------------------------------
+
+            for ( size_t clusterVertexIndex = 0; clusterVertexIndex < meshlet.vertex_count; ++clusterVertexIndex )
+            {
+                MeshCluster::PackPositionBits
+                (
+                    pPositionBits,
+                    uint32_t( clusterVertexIndex ),
+                    compressedVertexPositions[clusterVertexIndex] - compressedVertexAnchor,
+                    numPositionBitsX,
+                    numPositionBitsY,
+                    nymPositionBitsZ
+                );
+            }
+
+            // Triangle bits
+            //-------------------------------------------------------------------------
+
             for ( uint32_t meshletTriangleIndex = 0; meshletTriangleIndex < meshlet.triangle_count; ++meshletTriangleIndex )
             {
+                EE_ASSERT( meshlet.triangle_offset + meshletTriangleIndex * 3 + 2 < tempMeshletTriangles.size() );
+
                 uint8_t srcVertex0 = tempMeshletTriangles[meshlet.triangle_offset + meshletTriangleIndex * 3];
                 uint8_t srcVertex1 = tempMeshletTriangles[meshlet.triangle_offset + meshletTriangleIndex * 3 + 1];
                 uint8_t srcVertex2 = tempMeshletTriangles[meshlet.triangle_offset + meshletTriangleIndex * 3 + 2];
 
-                clusterTriangles.push_back( MeshCluster::PackTriangle( srcVertex0, srcVertex1, srcVertex2 ) );
+                MeshCluster::PackTriangleBits( pTriangleBits, meshletTriangleIndex, srcVertex0, srcVertex1, srcVertex2 );
+
+                // Validate the triangle compression
+                //-------------------------------------------------------------------------
+
+                uint16_t unpackedVertex0 = 0;
+                uint16_t unpackedVertex1 = 0;
+                uint16_t unpackedVertex2 = 0;
+                MeshCluster::UnpackTriangleBits( pTriangleBits, meshletTriangleIndex, unpackedVertex0, unpackedVertex1, unpackedVertex2 );
+                EE_ASSERT( unpackedVertex0 == srcVertex0 && unpackedVertex1 == srcVertex1 && unpackedVertex2 == srcVertex2 );
             }
 
-            // Cluster itself
-            MeshCluster& cluster = *reinterpret_cast<MeshCluster*>( &clusters[( currentClusterOffset + meshletIndex ) * sizeof( MeshCluster )] );
-            cluster.m_numVertices = uint8_t( meshlet.vertex_count );
-            cluster.m_numTriangles = uint8_t( meshlet.triangle_count );
-            cluster.m_vertexOffset = meshBaseVertex + sectionBaseVertex + meshlet.vertex_offset;
-            cluster.m_triangleOffset = currentClusterTriangleOffset;
-            cluster.SetAnchorAndExponent( compressedVertexAnchor, compressedVertexExponent );
-            cluster.SetBoundingSphere( compressedClusterCenter, meshletBounds.radius );
-
-            // Append vertex data
-            clusterVertices.resize( clusterVertices.size() + meshlet.vertex_count * clusterVertexStride );
-
             // Compress vertices
+            //-------------------------------------------------------------------------
+
             for ( size_t clusterVertexIndex = 0; clusterVertexIndex < meshlet.vertex_count; ++clusterVertexIndex )
             {
+                EE_ASSERT( meshlet.vertex_offset + clusterVertexIndex < tempMeshletVertices.size() );
+
                 uint32_t sourceVertexIndex = tempMeshletVertices[meshlet.vertex_offset + clusterVertexIndex];
                 PositionAttribute srcPositionAttribute = GetPositionAttribute( sourceVertexIndex );
 
-                StaticMeshVertex* pDstMeshVertex = reinterpret_cast<StaticMeshVertex*>( clusterVertices.data() + ( cluster.m_vertexOffset + clusterVertexIndex ) * clusterVertexStride );
-                EE_ASSERT( reinterpret_cast<uint8_t*>( pDstMeshVertex ) <= ( clusterVertices.data() + clusterVertices.size() ) );
+                MeshCluster::VertexNormalAttribute* pDstNormal = reinterpret_cast<MeshCluster::VertexNormalAttribute*>( pNormals + clusterVertexIndex * sizeof( MeshCluster::VertexNormalAttribute ) );
+                *pDstNormal = {};
+                pDstNormal->Initialize( srcPositionAttribute.m_normal );
 
-                *pDstMeshVertex = {};
-                pDstMeshVertex->Initialize( compressedVertexPositions[clusterVertexIndex] - compressedVertexAnchor, srcPositionAttribute.m_normal );
-
-                if ( TextureCoordinateAttribute uv0; GetTextureCoordinateAttribute( sourceVertexIndex, 0, uv0 ) )
+                // Texture coordinates
+                for ( uint32_t attributeIndex = 0; attributeIndex < m_numTextureCoordinateAttributes; ++attributeIndex )
                 {
-                    pDstMeshVertex->m_uv0 = uv0;
+                    TextureCoordinateAttribute uv;
+                    if ( GetTextureCoordinateAttribute( sourceVertexIndex, attributeIndex, uv ) )
+                    {
+                        MeshCluster::TextureCoordinateAttribute* pDstUV = reinterpret_cast<MeshCluster::TextureCoordinateAttribute*>( pUVs + ( attributeIndex * meshlet.vertex_count + clusterVertexIndex ) * sizeof( MeshCluster::TextureCoordinateAttribute ) );
+                        *pDstUV = uv;
+                    }
                 }
 
-                if ( TextureCoordinateAttribute uv1; GetTextureCoordinateAttribute( sourceVertexIndex, 1, uv1 ) )
+                // Vertex colors
+                for ( uint32_t attributeIndex = 0; attributeIndex < m_numColorAttributes; ++attributeIndex )
                 {
-                    pDstMeshVertex->m_uv1 = uv1;
+                    ColorAttribute color;
+                    if ( GetColorAttribute( sourceVertexIndex, attributeIndex, color ) )
+                    {
+                        MeshCluster::VertexColorAttribute* pDstColor = reinterpret_cast<MeshCluster::VertexColorAttribute*>( pColors + ( attributeIndex * meshlet.vertex_count + clusterVertexIndex ) * sizeof( MeshCluster::VertexColorAttribute ) );
+                        *pDstColor = color;
+                    }
                 }
 
-                if ( ColorAttribute color; GetColorAttribute( sourceVertexIndex, 0, color ) )
+                // Skinning attributes
+                for ( uint32_t attributeIndex = 0; attributeIndex < m_numSkinningAttributes; ++attributeIndex )
                 {
-                    pDstMeshVertex->m_packedColor = color;
-                }
-
-                // Up to 2 skinning attributes / 8 bone weights total
-                if ( SkinningAttribute skinning; GetSkinningAttribute( sourceVertexIndex, 0, skinning ) )
-                {
-                    SkinningAttribute* pDstSkinningVertexData = reinterpret_cast<SkinningAttribute*>( pDstMeshVertex + 1 ) + 0;
-
-                    pDstSkinningVertexData->m_boneIndices = skinning.m_boneIndices;
-                    pDstSkinningVertexData->m_boneWeights = skinning.m_boneWeights;
-                }
-
-                if ( SkinningAttribute skinning; GetSkinningAttribute( sourceVertexIndex, 1, skinning ) )
-                {
-                    SkinningAttribute* pDstSkinningVertexData = reinterpret_cast<SkinningAttribute*>( pDstMeshVertex + 1 ) + 1;
-
-                    pDstSkinningVertexData->m_boneIndices = skinning.m_boneIndices;
-                    pDstSkinningVertexData->m_boneWeights = skinning.m_boneWeights;
+                    SkinningAttribute skinning;
+                    if ( GetSkinningAttribute( sourceVertexIndex, attributeIndex, skinning ) )
+                    {
+                        MeshCluster::SkinningAttribute* pDstSkinning = reinterpret_cast<MeshCluster::SkinningAttribute*>( pSkinning + ( attributeIndex * meshlet.vertex_count + clusterVertexIndex ) * sizeof( MeshCluster::SkinningAttribute ) );
+                        pDstSkinning->m_boneIndices = skinning.m_boneIndices;
+                        pDstSkinning->m_boneWeights = skinning.m_boneWeights;
+                    }
                 }
 
                 // Validate compression
-                Float3 decompressedPosition = pDstMeshVertex->GetPosition( compressedVertexAnchor, compressedVertexExponent );
-                EE_ASSERT( Math::Abs( decompressedPosition.m_x - srcPositionAttribute.m_position.m_x ) < 0.5F );
-                EE_ASSERT( Math::Abs( decompressedPosition.m_y - srcPositionAttribute.m_position.m_y ) < 0.5F );
-                EE_ASSERT( Math::Abs( decompressedPosition.m_z - srcPositionAttribute.m_position.m_z ) < 0.5F );
+                //-------------------------------------------------------------------------
+
+                #ifdef EE_DEBUG
+                float const validationTolerance = Math::Max( 0.5F, ldexpf( 0.5F, compressedVertexExponent ) );
+                Int3 const decompressedPosition = MeshCluster::UnpackPositionBits
+                (
+                    pPositionBits,
+                    uint32_t( clusterVertexIndex ),
+                    numPositionBitsX,
+                    numPositionBitsY,
+                    nymPositionBitsZ
+                ) + compressedVertexAnchor;
+                EE_ASSERT( Math::Abs( ldexpf( float( decompressedPosition.m_x ), compressedVertexExponent ) - srcPositionAttribute.m_position.m_x ) < validationTolerance );
+                EE_ASSERT( Math::Abs( ldexpf( float( decompressedPosition.m_y ), compressedVertexExponent ) - srcPositionAttribute.m_position.m_y ) < validationTolerance );
+                EE_ASSERT( Math::Abs( ldexpf( float( decompressedPosition.m_z ), compressedVertexExponent ) - srcPositionAttribute.m_position.m_z ) < validationTolerance );
+                #endif
             }
 
-            // Validate compression again
-            Float4 decompressedBoundingSphere = cluster.GetBoundingSphere();
-            EE_ASSERT( Math::Abs( decompressedBoundingSphere.m_x - meshletBounds.center[0] ) < 0.5F );
-            EE_ASSERT( Math::Abs( decompressedBoundingSphere.m_y - meshletBounds.center[1] ) < 0.5F );
-            EE_ASSERT( Math::Abs( decompressedBoundingSphere.m_z - meshletBounds.center[2] ) < 0.5F );
-            EE_ASSERT( Math::Abs( decompressedBoundingSphere.m_w - meshletBounds.radius ) < 0.5F );
+            // Validate the AABB compression
+
+            #ifdef EE_DEBUG
+            float const validationTolerance = Math::Max( 0.5F, ldexpf( 0.5F, compressedVertexExponent ) );
+            Float3 decompressedAABBMin, decompressedAABBMax;
+            pCluster->GetAABB( decompressedAABBMin, decompressedAABBMax );
+            EE_ASSERT( Math::Abs( decompressedAABBMin.m_x - ( meshletBounds.center[0] - meshletBounds.radius ) ) <= validationTolerance );
+            EE_ASSERT( Math::Abs( decompressedAABBMin.m_y - ( meshletBounds.center[1] - meshletBounds.radius ) ) <= validationTolerance );
+            EE_ASSERT( Math::Abs( decompressedAABBMin.m_z - ( meshletBounds.center[2] - meshletBounds.radius ) ) <= validationTolerance );
+            EE_ASSERT( Math::Abs( decompressedAABBMax.m_x - ( meshletBounds.center[0] + meshletBounds.radius ) ) <= validationTolerance );
+            EE_ASSERT( Math::Abs( decompressedAABBMax.m_y - ( meshletBounds.center[1] + meshletBounds.radius ) ) <= validationTolerance );
+            EE_ASSERT( Math::Abs( decompressedAABBMax.m_z - ( meshletBounds.center[2] + meshletBounds.radius ) ) <= validationTolerance );
+            #endif
+
+            dataCursor += clusterDataSize;
         }
 
+        EE_ASSERT( packedMeshData.size() == dataCursor );
         return meshNumClusters;
     }
 
-    void GeometryBuilder::BuildAndAppendGeometry( Geometry& geometry ) const
+    Geometry GeometryBuilder::BuildGeometry() const
     {
-        uint32_t meshNumClusters = BuildAndAppendClusters
-        (
-            geometry.GetClusterVertices(),
-            geometry.GetClusterVertexStride(),
-            geometry.GetClusterTriangles(),
-            geometry.GetClusters()
-        );
+        Geometry geometry = {};
 
-        EE_ASSERT( geometry.GetNumClusters() == meshNumClusters );
-        EE_ASSERT( ( geometry.m_clusters.size() % sizeof( MeshCluster ) ) == 0 );
+        geometry.m_meshData.resize( sizeof( MeshHeader ) );
+
+        AABB clustersAABB = AABB( ComputeAABB() ); // TODO: use real algorithm to find minimal bounding box, for now use AABB
+        geometry.m_bounds = OBB( clustersAABB );
+
+        uint32_t const meshNumClusters = BuildClusters( geometry.m_meshData );
+
+        MeshHeader& meshHeader = geometry.GetMeshHeader();
+        meshHeader = {};
+        meshHeader.m_numClusters = meshNumClusters;
+        clustersAABB.GetCenter().StoreFloat3( meshHeader.m_aabbCenterLocal );
+        clustersAABB.GetExtents().StoreFloat3( meshHeader.m_aabbHalfExtentsLocal );
+
+        EE_ASSERT( geometry.m_meshData.size() >= sizeof( MeshHeader ) + meshHeader.m_numClusters * sizeof( MeshCluster ) );
+        EE_ASSERT( meshHeader.m_numClusters == 0 || ( geometry.m_meshData.size() % 8 ) == 0 );
+
+        return geometry;
     }
 }

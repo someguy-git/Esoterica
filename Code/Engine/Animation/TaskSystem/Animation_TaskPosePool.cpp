@@ -36,6 +36,20 @@ namespace EE::Animation
         }
     }
 
+    Pose *PoseBuffer::GetSecondaryPose( Skeleton const *pSkeleton )
+    {
+        int32_t const numPoses = (int32_t) m_poses.size();
+        for ( int32_t poseIdx = 1; poseIdx < numPoses; poseIdx++ )
+        {
+            if ( m_poses[poseIdx].GetSkeleton() == pSkeleton )
+            {
+                return &m_poses[poseIdx];
+            }
+        }
+
+        return nullptr;
+    }
+
     void PoseBuffer::CopyFrom( PoseBuffer const& rhs )
     {
         EE_ASSERT( rhs.m_poses.size() == m_poses.size() );

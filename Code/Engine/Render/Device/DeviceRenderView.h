@@ -65,6 +65,6 @@ namespace EE::Render
         void Initialize( RenderSystem* pRenderSystem, size_t numMaterialShaderPipelineBuckets );
         void Shutdown( RenderSystem* pRenderSystem );
 
-        void UpdateDeviceResources( RenderSystem* pRenderSystem, TArrayView<uint32_t const> clusterCapacityPerShader, uint32_t numMeshInstancePages );
+        void UpdateDeviceResources( RenderSystem* pRenderSystem, DeviceRenderWorld const& deviceRenderWorld );
     };
 }

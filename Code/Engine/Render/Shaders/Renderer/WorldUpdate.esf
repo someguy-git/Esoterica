@@ -7,8 +7,8 @@ ESF_RESOURCE_TABLE struct WorldUpdateResourceTable
 {
     uint                                                        m_mode;
 
-    RWByteAddressBuffer                                         m_meshInstanceRootBuffer;
-    RWStructuredBuffer<MeshInstance>                            m_meshInstanceBuffer;
+    RWStructuredBuffer<MeshInstanceRoot>                        m_meshInstanceRootBuffer;
+    StructuredBuffer<uint>                                      m_meshInstanceBufferHandles;
     RWStructuredBuffer<LightInstance_DirectionalLight>          m_directionalLightBuffer;
     RWStructuredBuffer<LightInstance_PointLight>                m_pointLightBuffer;
     RWStructuredBuffer<LightInstance_SpotLight>                 m_spotLightBuffer;
@@ -53,15 +53,15 @@ void CS_main( uint groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID, 
 
         MeshInstance instance = ( MeshInstance )0;
 
-        instance.m_meshVertexStride         = initializeCommand.m_meshVertexStride;
         instance.m_lodMask                  = initializeCommand.m_lodMask;
         instance.m_meshInstanceRootIndex    = initializeCommand.m_rootIndex;
-        instance.m_clusterVertexBuffer      = initializeCommand.m_clusterVertexBuffer;
-        instance.m_clusterTriangleBuffer    = initializeCommand.m_clusterTriangleBuffer;
-        instance.m_meshIndex                = initializeCommand.m_meshIndex;
+        instance.m_meshBuffer               = initializeCommand.m_meshBuffer;
+        instance.m_instanceHidden           = initializeCommand.m_instanceHidden;
+        instance.m_clusterToInstanceOffset  = initializeCommand.m_clusterToInstanceOffset;
         instance.m_shaderParametersOffsetIn32ByteBlocks = initializeCommand.m_shaderParametersOffsetIn32ByteBlocks;
 
-        resourceTable.m_meshInstanceBuffer[initializeCommand.m_instanceID] = instance;
+        RWStructuredBuffer<MeshInstance> meshInstanceBuffer = GetRWBuffer( NonUniformResourceIndex( resourceTable.m_meshInstanceBufferHandles[initializeCommand.m_shaderIndex] ) );
+        meshInstanceBuffer[initializeCommand.m_instanceID] = instance;
     }
 
     //-------------------------------------------------------------------------
@@ -70,25 +70,23 @@ void CS_main( uint groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID, 
     {
         MeshInstanceRootUpdateCommand updateCommand = resourceTable.m_updateBuffer_MeshInstanceRoot[dispatchThreadID.x];
 
-        const uint rootAddress = updateCommand.m_instanceID * sizeof( MeshInstanceRoot );
+        MeshInstanceRoot meshInstanceRoot = resourceTable.m_meshInstanceRootBuffer[updateCommand.m_instanceID];
 
-        const MeshInstanceRoot meshInstanceRoot = resourceTable.m_meshInstanceRootBuffer.Load<MeshInstanceRoot>( rootAddress );
+        meshInstanceRoot.m_rootTransform = updateCommand.m_transform;
+        meshInstanceRoot.m_worldAABB = updateCommand.m_packedAABB;
 
-        // HACK: potentially fragile, we assume that MeshInstanceRoot always has a float4x3 transform as its first member
-        resourceTable.m_meshInstanceRootBuffer.Store<float3x4>( rootAddress, updateCommand.m_transform );
-
-
-        const uint worldAABBDataOffset = meshInstanceRoot.GetWorldAABBDataOffset();
-        resourceTable.m_meshInstanceRootBuffer.Store<uint3>( rootAddress + worldAABBDataOffset * 4, updateCommand.m_packedAABB );
+        resourceTable.m_meshInstanceRootBuffer[updateCommand.m_instanceID] = meshInstanceRoot;
     }
     
     if ( isTransformUpdateMode && dispatchThreadID.x < RootCBV.m_numUpdateCommands_MeshInstance )
     {
         MeshInstanceTransformUpdateCommand updateCommand = resourceTable.m_updateBuffer_MeshInstance[dispatchThreadID.x];
         
-        MeshInstance meshInstance = resourceTable.m_meshInstanceBuffer[updateCommand.m_instanceID];
+        RWStructuredBuffer<MeshInstance> meshInstanceBuffer = GetRWBuffer( NonUniformResourceIndex( resourceTable.m_meshInstanceBufferHandles[updateCommand.m_shaderIndex] ) );
+
+        MeshInstance meshInstance = meshInstanceBuffer[updateCommand.m_instanceID];
         meshInstance.m_localTransform = updateCommand.m_transform;
-        resourceTable.m_meshInstanceBuffer[updateCommand.m_instanceID] = meshInstance;
+        meshInstanceBuffer[updateCommand.m_instanceID] = meshInstance;
     }
     
     if ( isTransformUpdateMode && dispatchThreadID.x < RootCBV.m_numUpdateCommands_SkinningTransform )

@@ -90,10 +90,16 @@ namespace EE::EntityModel
         void SwitchEditMode( UpdateContext const& context, TypeSystem::TypeInfo const* pNewModeTypeInfo );
         void ClearEditMode();
 
+        // Events
+        //-------------------------------------------------------------------------
+
+        void OnSelectionChanged();
+
     private:
 
         EditorContext                                   m_editorContext;
         TVector<ViewportResourceDropHandler const*>     m_pViewportDropHandlers;
+        EventBindingID                                  m_selectionChangedEventID;
 
         TVector<TypeSystem::TypeInfo const*>            m_editModeTypeInfos;
         MapEditorMode*                                  m_pActiveEditMode = nullptr;

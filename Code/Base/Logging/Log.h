@@ -212,7 +212,7 @@ namespace EE
 //-------------------------------------------------------------------------
 // If you dont want to derive from log::storage, use these macros to mix in the functionality
 
-#define EE_EMBED_LOGGING_METHODS( logStorageName );\
+#define EE_EMBED_LOGGING_METHODS( logStorageName )\
 inline bool HasWarnings() const { return !logStorageName.HasWarnings(); }\
 inline bool HasErrors() const { return !logStorageName.HasErrors(); }\
 bool LogError( char const* pFormat, ... )\

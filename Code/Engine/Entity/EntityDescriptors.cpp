@@ -125,7 +125,6 @@ namespace EE::EntityModel
         //-------------------------------------------------------------------------
         // Component descriptors are sorted during compilation, spatial components are first, followed by regular components
 
-        bool componentCreationFailed = false;
         for ( EntityModel::ComponentDescriptor const& componentDesc : m_components )
         {
             auto pEntityComponent = componentDesc.CreateComponent( typeRegistry );
@@ -152,7 +151,6 @@ namespace EE::EntityModel
         // Create entity systems
         //-------------------------------------------------------------------------
 
-        bool entitySystemCreationFailed = false;
         for ( auto const& systemDesc : m_systems )
         {
             auto pEntitySystem = systemDesc.CreateSystem( typeRegistry );
@@ -367,7 +365,99 @@ namespace EE::EntityModel
         return createdEntities;
     }
 
-    void EntityCollection::RebuildLookupMap()
+    #if EE_DEVELOPMENT_TOOLS
+    void EntityCollection::RemoveInvalidComponentsAndSystems( TypeSystem::TypeRegistry const& typeRegistry, Log& log, bool removeDevOnlyTypes )
+    {
+        for ( int32_t e = int32_t( m_entityDescriptors.size() ) - 1; e >= 0; e-- )
+        {
+            bool invalidSpatialEntity = false;
+
+            // Remove invalid and dev-only components
+            for ( int32_t c = int32_t( m_entityDescriptors[e].m_components.size() ) - 1; c >= 0; c-- )
+            {
+                ComponentDescriptor& componentDesc = m_entityDescriptors[e].m_components[c];
+                TypeSystem::TypeInfo const* pComponentTypeInfo = typeRegistry.GetTypeInfo( componentDesc.m_typeID );
+
+                bool const isValidType = pComponentTypeInfo != nullptr;
+                if ( !isValidType || ( removeDevOnlyTypes && pComponentTypeInfo->m_isForDevelopmentUseOnly ) )
+                {
+                    if ( componentDesc.IsSpatialComponent() )
+                    {
+                        // If we are about to remove the root component, this will leave the entity in a malformed state, so just remove the entire entity
+                        if ( componentDesc.IsRootComponent() )
+                        {
+                            if ( !isValidType )
+                            {
+                                log.LogError( "Invalid root component detected and removed, removing entire entity (component %s on entity %s)", componentDesc.m_name.c_str(), m_entityDescriptors[e].m_name.c_str() );
+                            }
+                            else
+                            {
+                                log.LogError( "Dev-only root component detected and removed, removing entire entity (component %s on entity %s)", componentDesc.m_name.c_str(), m_entityDescriptors[e].m_name.c_str() );
+                            }
+
+                            invalidSpatialEntity = true;
+                            break;
+                        }
+
+                        // Fix all child component names
+                        for ( auto& otherComponentDesc : m_entityDescriptors[e].m_components )
+                        {
+                            if ( otherComponentDesc.m_spatialParentName == componentDesc.m_name )
+                            {
+                                otherComponentDesc.m_spatialParentName = componentDesc.m_spatialParentName;
+                            }
+                        }
+
+                        // Decrement spatial component count
+                        m_entityDescriptors[e].m_numSpatialComponents--;
+                        EE_ASSERT( m_entityDescriptors[e].m_numSpatialComponents >= 0 );
+                    }
+
+                    if ( !isValidType )
+                    {
+                        log.LogError( "Invalid component detected and removed (component %s on entity %s)", componentDesc.m_name.c_str(), m_entityDescriptors[e].m_name.c_str() );
+                    }
+
+                    m_entityDescriptors[e].m_components.erase( m_entityDescriptors[e].m_components.begin() + c );
+                }
+            }
+
+            // Remove invalid spatial entities
+            if ( invalidSpatialEntity )
+            {
+                m_entityDescriptors.erase( m_entityDescriptors.begin() + e );
+                continue;
+            }
+
+            // Remove invalid and dev-only systems
+            for ( int32_t s = int32_t( m_entityDescriptors[e].m_systems.size() ) - 1; s >= 0; s-- )
+            {
+                SystemDescriptor& systemDesc = m_entityDescriptors[e].m_systems[s];
+                TypeSystem::TypeInfo const* pSystemTypeInfo = typeRegistry.GetTypeInfo( systemDesc.m_typeID );
+                bool const isValidType = pSystemTypeInfo != nullptr;
+                if ( !isValidType || ( removeDevOnlyTypes && pSystemTypeInfo->m_isForDevelopmentUseOnly ) )
+                {
+                    if ( !isValidType )
+                    {
+                        log.LogError( "Invalid system detected and removed (system %s on entity %s)", systemDesc.m_typeID.c_str(), m_entityDescriptors[e].m_name.c_str() );
+                    }
+
+                    m_entityDescriptors[e].m_systems.erase( m_entityDescriptors[e].m_systems.begin() + s );
+                }
+            }
+
+            // Remove any empty entities
+            if ( ( m_entityDescriptors[e].m_components.size() + m_entityDescriptors[e].m_systems.size() ) == 0 )
+            {
+                log.LogError( "Empty entity removed (%s)", m_entityDescriptors[e].m_name.c_str() );
+                m_entityDescriptors.erase( m_entityDescriptors.begin() + e );
+            }
+        }
+
+        RebuildLookupMapAndSpatialAttachmentInfo();
+    }
+
+    void EntityCollection::BuildLookupMap()
     {
         m_entityLookupMap.clear();
 
@@ -380,7 +470,33 @@ namespace EE::EntityModel
         }
     }
 
-    #if EE_DEVELOPMENT_TOOLS
+    void EntityCollection::BuildSpatialAttachmentInfo()
+    {
+        m_entitySpatialAttachmentInfo.clear();
+        m_entitySpatialAttachmentInfo.reserve( m_entityDescriptors.size() );
+
+        int32_t const numEntities = (int32_t) m_entityDescriptors.size();
+        for ( int32_t i = 0; i < numEntities; i++ )
+        {
+            auto const& entityDesc = m_entityDescriptors[i];
+            if ( !entityDesc.IsSpatialEntity() || !entityDesc.HasSpatialParent() )
+            {
+                continue;
+            }
+
+            //-------------------------------------------------------------------------
+
+            SpatialAttachmentInfo attachmentInfo;
+            attachmentInfo.m_entityIdx = i;
+            attachmentInfo.m_parentEntityIdx = FindEntityIndex( entityDesc.m_spatialParentName );
+
+            if ( attachmentInfo.m_parentEntityIdx != InvalidIndex )
+            {
+                m_entitySpatialAttachmentInfo.push_back( attachmentInfo );
+            }
+        }
+    }
+
     void EntityCollection::Clear()
     {
         m_entityDescriptors.clear();
@@ -431,36 +547,11 @@ namespace EE::EntityModel
 
         eastl::sort( m_entityDescriptors.begin(), m_entityDescriptors.end(), SortComparator );
 
-        // Create lookup map
+        // Create lookup map + spatial attachment info
         //-------------------------------------------------------------------------
 
-        RebuildLookupMap();
-
-        // Generate spatial attachment info
-        //-------------------------------------------------------------------------
-
-        m_entitySpatialAttachmentInfo.clear();
-        m_entitySpatialAttachmentInfo.reserve( m_entityDescriptors.size() );
-
-        for ( int32_t i = 0; i < numEntities; i++ )
-        {
-            auto const& entityDesc = m_entityDescriptors[i];
-            if ( !entityDesc.IsSpatialEntity() || !entityDesc.HasSpatialParent() )
-            {
-                continue;
-            }
-
-            //-------------------------------------------------------------------------
-
-            SpatialAttachmentInfo attachmentInfo;
-            attachmentInfo.m_entityIdx = i;
-            attachmentInfo.m_parentEntityIdx = FindEntityIndex( entityDesc.m_spatialParentName );
-
-            if ( attachmentInfo.m_parentEntityIdx != InvalidIndex )
-            {
-                m_entitySpatialAttachmentInfo.push_back( attachmentInfo );
-            }
-        }
+        BuildLookupMap();
+        BuildSpatialAttachmentInfo();
     }
 
     void EntityCollection::GetAllReferencedResources( TVector<ResourceID>& outReferencedResources ) const

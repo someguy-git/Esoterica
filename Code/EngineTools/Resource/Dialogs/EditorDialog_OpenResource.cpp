@@ -11,7 +11,7 @@ namespace EE::Resource
     {
         m_buffer.reserve( 512 );
         m_files.reserve( 100000 );
-        DataFileSystem::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileSystem->FindDirectoryEntry( DataPath( "Data://" ) );
+        DataFileRegistry::DirectoryInfo const* pDirectoryInfo = m_pToolsContext->m_pDataFileRegistry->FindDirectoryEntry( DataPath( "Data://" ) );
         pDirectoryInfo->GetAllResourceOrDataFiles( m_files, true );
     }
 
@@ -26,7 +26,7 @@ namespace EE::Resource
 
         bool shouldCloseDialog = false;
 
-        TVector<DataFileSystem::FileInfo const*> const& fileList = m_filter.HasFilterSet() ? m_filteredFiles : m_files;
+        TVector<DataFileRegistry::FileInfo const*> const& fileList = m_filter.HasFilterSet() ? m_filteredFiles : m_files;
 
         if ( ImGui::BeginChild( "List", ImVec2( 0, -1 ) ) )
         {
@@ -36,7 +36,7 @@ namespace EE::Resource
             {
                 for ( int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++ )
                 {
-                    DataFileSystem::FileInfo const* pFileInfo = fileList[i];
+                    DataFileRegistry::FileInfo const* pFileInfo = fileList[i];
 
                     Color color = ImGuiX::Style::s_colorText;
                     if ( pFileInfo->IsResourceDescriptorFile() )

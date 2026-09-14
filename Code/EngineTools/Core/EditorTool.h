@@ -2,7 +2,7 @@
 #include "UndoStack.h"
 #include "ToolsContext.h"
 #include "EngineTools/PropertyGrid/PropertyGrid.h"
-#include "EngineTools/FileSystem/DataFileSystem.h"
+#include "EngineTools/FileSystem/DataFileRegistry.h"
 #include "EngineTools/Resource/ResourceDescriptor.h"
 #include "Engine/Viewport/Viewport.h"
 #include "Base/Utils/GlobalRegistryBase.h"
@@ -17,6 +17,7 @@ namespace EE
     class UpdateContext;
     class Entity;
     class EntityWorld;
+    class SpatialEntityComponent;
     class EntityWorldUpdateContext;
     class ToolsCameraComponent;
     class DataFileUndoableAction;
@@ -386,20 +387,20 @@ namespace EE
         // Resource Helpers
         //-------------------------------------------------------------------------
 
-        inline FileSystem::Path const& GetRawResourceDirectoryPath() const { return m_pToolsContext->m_pDataFileSystem->GetSourceDataDirectoryPath(); }
+        inline FileSystem::Path const& GetRawResourceDirectoryPath() const { return m_pToolsContext->m_pDataFileRegistry->GetSourceDataDirectoryPath(); }
 
-        inline FileSystem::Path const& GetCompiledResourceDirectoryPath() const { return m_pToolsContext->m_pDataFileSystem->GetCompiledResourceDirectoryPath(); }
+        inline FileSystem::Path const& GetCompiledResourceDirectoryPath() const { return m_pToolsContext->m_pDataFileRegistry->GetCompiledResourceDirectoryPath(); }
 
         inline FileSystem::Path GetFileSystemPath( DataPath const& path ) const
         {
             EE_ASSERT( path.IsValid() );
-            return path.GetFileSystemPath( m_pToolsContext->m_pDataFileSystem->GetSourceDataDirectoryPath() );
+            return path.GetFileSystemPath( m_pToolsContext->m_pDataFileRegistry->GetSourceDataDirectoryPath() );
         }
 
         inline FileSystem::Path GetFileSystemPath( ResourceID const& resourceID ) const
         {
             EE_ASSERT( resourceID.IsValid() );
-            return resourceID.GetFileSystemPath( m_pToolsContext->m_pDataFileSystem->GetSourceDataDirectoryPath() );
+            return resourceID.GetFileSystemPath( m_pToolsContext->m_pDataFileRegistry->GetSourceDataDirectoryPath() );
         }
 
         // Use this function to load a resource required for this tool (hot-reload aware)
@@ -477,6 +478,18 @@ namespace EE
         // Called once per update if we are hovering over the 3D viewport and not over an imgui item
         // Use this to handle any interactions with the 3D world
         virtual void HandleViewportInteractions() {}
+
+        // Set the outlined/highlighted objects in the viewport
+        void SetViewportOutlinedObjects( TArrayView<Entity const*> entities, TArrayView<SpatialEntityComponent const*> components );
+
+        // Set the outlined/highlighted objects in the viewport
+        inline void SetViewportOutlinedObjects( TArrayView<Entity const*> entities ) { SetViewportOutlinedObjects( entities, {} ); }
+
+        // Set the outlined/highlighted objects in the viewport
+        inline void SetViewportOutlinedObjects( TArrayView<SpatialEntityComponent const*> components ) { SetViewportOutlinedObjects( {}, components ); }
+
+        // Clear all outlined viewport outlines
+        void ClearViewportOutlinedObjects();
 
         // Editor Map
         //-------------------------------------------------------------------------

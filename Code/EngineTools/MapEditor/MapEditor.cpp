@@ -4,6 +4,7 @@
 #include "EngineTools/Entity/EntityEditor/EntityEditor_Utils.h"
 #include "EngineTools/Entity/EntitySerializationTools.h"
 #include "EngineTools/Core/SystemDialogs.h"
+#include "Engine/Entity/EntityWorldUpdateContext.h"
 #include "Engine/Entity/EntityWorld.h"
 #include "Base/FileSystem/FileSystem.h"
 
@@ -24,11 +25,14 @@ namespace EE::EntityModel
         }
 
         m_editModeTypeInfos = m_pToolsContext->m_pTypeRegistry->GetAllDerivedTypes( MapEditorMode::GetStaticTypeID(), false, false, true );
+
+        m_selectionChangedEventID = m_editorContext.OnSelectionChanged().Bind( [this] () { OnSelectionChanged(); } );
     }
 
     MapEditor::~MapEditor()
     {
         EE_ASSERT( m_pActiveEditMode == nullptr );
+        m_editorContext.OnSelectionChanged().Unbind( m_selectionChangedEventID );
     }
 
     void MapEditor::Initialize( UpdateContext const& context )
@@ -67,7 +71,7 @@ namespace EE::EntityModel
         // Get new map filename
         //-------------------------------------------------------------------------
 
-        FileDialog::Result const result = FileDialog::SaveResourceOrDataFile( m_pToolsContext, EntityMapResourceDescriptor::GetStaticTypeID(), m_pToolsContext->m_pDataFileSystem->GetSourceDataDirectoryPath().c_str() );
+        FileDialog::Result const result = FileDialog::SaveResourceOrDataFile( m_pToolsContext, EntityMapResourceDescriptor::GetStaticTypeID(), m_pToolsContext->m_pDataFileRegistry->GetSourceDataDirectoryPath().c_str() );
         if ( !result )
         {
             return;
@@ -408,19 +412,6 @@ namespace EE::EntityModel
 
         if ( m_editorContext.HasSpatialSelection() )
         {
-            // Draw selection bounds
-            //-------------------------------------------------------------------------
-
-            drawingCtx.DrawWireBox( m_editorContext.GetSpatialSelectionCombinedBounds(), Colors::Yellow, 1.0f, DebugDrawLayer::World );
-
-            if ( m_editorContext.GetSpatialSelectionBounds().size() > 1 )
-            {
-                for ( OBB const& bounds : m_editorContext.GetSpatialSelectionBounds() )
-                {
-                    drawingCtx.DrawWireBox( bounds, Colors::Cyan, 1.0f, DebugDrawLayer::World );
-                }
-            }
-
             // Update Gizmo
             //-------------------------------------------------------------------------
 
@@ -657,6 +648,38 @@ namespace EE::EntityModel
         {
             m_pActiveEditMode->Shutdown();
             EE::Delete( m_pActiveEditMode );
+        }
+    }
+
+    void MapEditor::OnSelectionChanged()
+    {
+        if ( m_editorContext.HasSpatialSelection() )
+        {
+            TInlineVector<SpatialEntityComponent const*, 100> selectedComponents;
+
+            for ( auto const& selectedItem : m_editorContext.GetSpatialSelection() )
+            {
+                if ( selectedItem.IsSpatialComponent() )
+                {
+                    selectedComponents.emplace_back( selectedItem.GetSpatialComponent() );
+                }
+                else if ( selectedItem.IsEntity() )
+                {
+                    for ( auto pComponent : selectedItem.m_pEntity->GetComponents() )
+                    {
+                        if ( auto pSpatialComponent = TryCast<SpatialEntityComponent>( pComponent ) )
+                        {
+                            selectedComponents.emplace_back( pSpatialComponent );
+                        }
+                    }
+                }
+            }
+
+            SetViewportOutlinedObjects( selectedComponents );
+        }
+        else
+        {
+            ClearViewportOutlinedObjects();
         }
     }
 }

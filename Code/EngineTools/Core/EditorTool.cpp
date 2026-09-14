@@ -8,6 +8,7 @@
 #include "Engine/Render/RenderSystem.h"
 #include "Engine/Entity/Debug/DebugView_EntityWorld.h"
 #include "Engine/Render/RenderViewport.h"
+#include "Engine/Render/Systems/WorldSystem_Render.h"
 #include "Engine/Render/Components/Component_Lights.h"
 #include "Engine/Camera/Systems/WorldSystem_Camera.h"
 #include "Engine/Camera/Components/Component_ToolsCamera.h"
@@ -1010,7 +1011,7 @@ namespace EE
                     InlineString payloadStr = (char*) pPayload->Data;
 
                     ResourceID const resourceID( payloadStr.c_str() );
-                    if ( resourceID.IsValid() && m_pToolsContext->m_pDataFileSystem->DoesFileExist( resourceID ) )
+                    if ( resourceID.IsValid() && m_pToolsContext->m_pDataFileRegistry->DoesFileExist( resourceID ) )
                     {
                         // Unproject mouse into viewport
                         Float2 const mouseViewportPos = ImGui::GetMousePos();
@@ -1104,6 +1105,48 @@ namespace EE
             pDockNode->LocalFlags |= ImGuiDockNodeFlags_NoDockingOverMe;
             pDockNode->LocalFlags |= ImGuiDockNodeFlags_NoDockingOverOther;
         }
+    }
+
+    void EditorTool::SetViewportOutlinedObjects( TArrayView<Entity const*> entities, TArrayView<SpatialEntityComponent const*> components )
+    {
+        EE_ASSERT( SupportsViewport() );
+        auto pRenderWorldSystem = m_pWorld->GetWorldSystem<Render::RenderWorldSystem>();
+
+        if ( entities.empty() && components.empty() )
+        {
+            pRenderWorldSystem->ClearOutlinedComponents();
+            return;
+        }
+
+        //-------------------------------------------------------------------------
+
+        TInlineVector<ComponentID, 100> outlinedComponents;
+        for ( Entity const* pEntity : entities )
+        {
+            for ( auto pComponent : pEntity->GetComponents() )
+            {
+                if ( auto pSpatialComponent = TryCast<SpatialEntityComponent>( pComponent ) )
+                {
+                    VectorEmplaceBackUnique( outlinedComponents, pSpatialComponent->GetID() );
+                }
+            }
+        }
+
+        for ( SpatialEntityComponent const* pComponent : components )
+        {
+            VectorEmplaceBackUnique( outlinedComponents, pComponent->GetID() );
+        }
+
+        //-------------------------------------------------------------------------
+
+        pRenderWorldSystem->SetOutlinedComponents( outlinedComponents );
+    }
+
+    void EditorTool::ClearViewportOutlinedObjects()
+    {
+        EE_ASSERT( SupportsViewport() );
+        auto pRenderWorldSystem = m_pWorld->GetWorldSystem<Render::RenderWorldSystem>();
+        pRenderWorldSystem->ClearOutlinedComponents();
     }
 
     // Camera
@@ -1843,7 +1886,7 @@ namespace EE
         }
 
         // Don't try to open files that dont exist
-        if ( !pToolsContext->m_pDataFileSystem->DoesFileExist( path ) )
+        if ( !pToolsContext->m_pDataFileRegistry->DoesFileExist( path ) )
         {
             return nullptr;
         }

@@ -25,7 +25,6 @@ namespace EE::Resource
 
         constexpr static char const * const s_compileArg = "-compile";
         constexpr static char const * const s_forceArg = "-force";
-        constexpr static char const * const s_packageArg = "-package";
         constexpr static char const* const s_logDelimiter = "Esoterica Resource Compiler\n-------------------------------------------------------------------------\n\n";
         constexpr static uint64_t const s_binarySerializationVersion = 14;
 

@@ -99,6 +99,19 @@ namespace EE::Render
             m_shaders[permutationIndex] = RHI::CreateShader( pContextRHI, shaderPermutationParameters[permutationIndex] );
         }
 
+        #if EE_DEVELOPMENT_TOOLS
+        if ( stageByteCodes.size() > MaterialShader::ByteCodeIndices::PS_OutlineID )
+        {
+            TInlineVector<RHI::ShaderByteCode, 2> outlineIDShaderParameters =
+            {
+                stageByteCodes[MaterialShader::ByteCodeIndices::MS],
+                stageByteCodes[MaterialShader::ByteCodeIndices::PS_OutlineID],
+            };
+
+            m_pOutlineShader = RHI::CreateShader( pContextRHI, outlineIDShaderParameters );
+        }
+        #endif
+
         RHI::RootSignatureParameters rootSignatureParameters = {};
         rootSignatureParameters.m_debugName.sprintf( "%s RootSignature", m_shaderName.c_str() );
         rootSignatureParameters.m_pShader = m_shaders[0];
@@ -153,6 +166,10 @@ namespace EE::Render
             RHI::DestroyShader( pContextRHI, eastl::move( shader ) );
         }
         RHI::DestroyCommandSignature( pContextRHI, eastl::move( m_pCommandSignature ) );
+
+        #if EE_DEVELOPMENT_TOOLS
+        RHI::DestroyShader( pContextRHI, eastl::move( m_pOutlineShader ) );
+        #endif
     }
 
     //-------------------------------------------------------------------------
@@ -160,7 +177,48 @@ namespace EE::Render
     SurfaceShader::SurfaceShader( RHI::Context* pContextRHI, StringID shaderName, ByteCodeList const& stageByteCodes )
         : m_shaderName( shaderName )
     {
-        m_pShader = RHI::CreateShader( pContextRHI, stageByteCodes );
+        static StringID const s_OutlineIDStageID( "PS_OutlineID" );
+
+        ByteCodeList mainStageByteCodes;
+        mainStageByteCodes.reserve( stageByteCodes.size() );
+        for ( RHI::ShaderByteCode const& byteCode : stageByteCodes )
+        {
+            if ( byteCode.m_ID == s_OutlineIDStageID )
+            {
+                continue;
+            }
+
+            mainStageByteCodes.emplace_back( byteCode );
+        }
+
+        m_pShader = RHI::CreateShader( pContextRHI, mainStageByteCodes );
+
+        #if EE_DEVELOPMENT_TOOLS
+        bool hasOutlineIDPixelShader = false;
+        for ( RHI::ShaderByteCode const& byteCode : stageByteCodes )
+        {
+            if ( byteCode.m_ID == s_OutlineIDStageID )
+            {
+                hasOutlineIDPixelShader = true;
+                break;
+            }
+        }
+
+        if ( hasOutlineIDPixelShader )
+        {
+            ByteCodeList outlineIDStageByteCodes;
+            outlineIDStageByteCodes.reserve( stageByteCodes.size() );
+            for ( RHI::ShaderByteCode const& byteCode : stageByteCodes )
+            {
+                if ( byteCode.m_stage != RHI::ShaderStage::Pixel || byteCode.m_ID == s_OutlineIDStageID )
+                {
+                    outlineIDStageByteCodes.emplace_back( byteCode );
+                }
+            }
+
+            m_pOutlineShader = RHI::CreateShader( pContextRHI, outlineIDStageByteCodes );
+        }
+        #endif
 
         RHI::RootSignatureParameters rootSignatureParameters = {};
         rootSignatureParameters.m_pShader = m_pShader;
@@ -223,6 +281,10 @@ namespace EE::Render
         RHI::DestroyCommandSignature( pContextRHI, eastl::move( m_pCommandSignatureDraw ) );
         RHI::DestroyCommandSignature( pContextRHI, eastl::move( m_pCommandSignatureDrawIndexed ) );
         RHI::DestroyCommandSignature( pContextRHI, eastl::move( m_pCommandSignatureMeshDispatch ) );
+
+        #if EE_DEVELOPMENT_TOOLS
+        RHI::DestroyShader( pContextRHI, eastl::move( m_pOutlineShader ) );
+        #endif
     }
 
     //-------------------------------------------------------------------------

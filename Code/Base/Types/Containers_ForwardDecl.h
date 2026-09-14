@@ -59,6 +59,7 @@ namespace EE
     template <typename T> using TAlignedVector = eastl::vector<T, eastl::TrackedAlignedAllocator>;
 
     using Blob = TVector<uint8_t>;
+    using AlignedBlob = TAlignedVector<uint8_t>;
 
     template <typename T> using TArrayView = eastl::span<T, size_t( -1 )>;
 

@@ -11,7 +11,7 @@
 namespace EE::Resource
 {
     NetworkResourceProvider::NetworkResourceProvider( ResourceSettings const& settings, TaskSystem& taskSystem )
-        : ResourceProvider( settings ), m_taskSystem( taskSystem )
+        : IResourceProvider( settings ), m_taskSystem( taskSystem )
         , m_deserializationTask( [this] ( TaskSetPartition range, uint32_t threadnum ) { DeserializeReceivedMessages(); } )
     {}
 

@@ -29,8 +29,7 @@ namespace EE::Render
         (
             RenderSystem*                                               pRenderSystem,
             TArrayView<ForwardShadingMaterialShaderPipelineBucket>      materialShaderPipelineBuckets,
-            TArrayView<uint32_t const>                                  clusterCapacity,
-            uint32_t                                                    numMeshInstancePages
+            DeviceRenderWorld const&                                    deviceRenderWorld
         );
 
         void DrawAndFilterGlobalEnvironmentMap

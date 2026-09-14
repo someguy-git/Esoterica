@@ -78,6 +78,7 @@ namespace EE::DebugDrawInternal
         DebugCommandFlagTriangle = 1U << 2U,
 
         DebugCommandFlagDisableAA = 1U << 10U,
+        DebugCommandFlagOutline = 1U << 11U
     };
 
     //-------------------------------------------------------------------------
@@ -256,6 +257,7 @@ namespace EE::DebugDrawInternal
         uint64_t          m_meshID = 0;
         bool              m_isWireframe = false;
         bool              m_useFakeLighting = false;
+        bool              m_drawOutline = false;
         Matrix            m_transform = Matrix::Identity;
         Color             m_tintColor;
         Seconds           m_TTL = 0;
@@ -328,6 +330,10 @@ namespace EE::DebugDrawInternal
         {
             CommandBuffer* pBuffer = GetCommandBuffer( layer );
             cmd.m_hitTestID = m_hitTestID;
+            if ( m_drawOutline )
+            {
+                cmd.m_commandFlags |= DebugCommandFlagOutline;
+            }
             pBuffer->m_pointCommands.emplace_back( eastl::move( cmd ) );
         }
 
@@ -335,6 +341,10 @@ namespace EE::DebugDrawInternal
         {
             CommandBuffer* pBuffer = GetCommandBuffer( layer );
             cmd.m_hitTestID = m_hitTestID;
+            if ( m_drawOutline )
+            {
+                cmd.m_commandFlags |= DebugCommandFlagOutline;
+            }
             pBuffer->m_lineCommands.emplace_back( eastl::move( cmd ) );
         }
 
@@ -342,6 +352,10 @@ namespace EE::DebugDrawInternal
         {
             CommandBuffer* pBuffer = GetCommandBuffer( layer );
             cmd.m_hitTestID = m_hitTestID;
+            if ( m_drawOutline )
+            {
+                cmd.m_commandFlags |= DebugCommandFlagOutline;
+            }
             pBuffer->m_triangleCommands.emplace_back( eastl::move( cmd ) );
         }
 
@@ -356,6 +370,7 @@ namespace EE::DebugDrawInternal
         {
             CommandBuffer* pBuffer = GetCommandBuffer( layer );
             cmd.m_hitTestID = m_hitTestID;
+            cmd.m_drawOutline = m_drawOutline;
             pBuffer->m_meshCommands.emplace_back( eastl::move( cmd ) );
         }
 
@@ -384,6 +399,11 @@ namespace EE::DebugDrawInternal
             m_hitTestID = g_InvalidHitTestID;
         }
 
+        inline void SetDrawOutline( bool enabled )
+        {
+            m_drawOutline = enabled;
+        }
+
     private:
 
         inline CommandBuffer* GetCommandBuffer( DebugDrawLayer layer )
@@ -402,6 +422,7 @@ namespace EE::DebugDrawInternal
 
         Threading::ThreadID m_ID;
         uint64_t            m_hitTestID = g_InvalidHitTestID;
+        bool                m_drawOutline = false;
         CommandBuffer       m_transparentDepthOnWrite;
         CommandBuffer       m_transparentDepthOnNoWrite;
         CommandBuffer       m_transparentDepthSeparateWrite;

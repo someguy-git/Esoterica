@@ -169,6 +169,10 @@ namespace EE::Render
 
         m_commonSamplers[COMMON_SAMPLER_LINEAR_CLAMP_MAX] = RHI::CreateSampler( m_pContextRHI, samplerParameters );
 
+        samplerParameters.m_filterMode = RHI::FilterMode::Min;
+
+        m_commonSamplers[COMMON_SAMPLER_LINEAR_CLAMP_MIN] = RHI::CreateSampler( m_pContextRHI, samplerParameters );
+
         // Ensure all samplers are initialized
         for ( RHI::Sampler* sampler : m_commonSamplers )
         {
@@ -187,27 +191,6 @@ namespace EE::Render
         shaderDataBufferParameters.m_debugName = "System_Renderer ShaderDataBuffer";
 
         m_pShaderDataBuffer = RHI::CreateBuffer( m_pContextRHI, shaderDataBufferParameters );
-
-        // Meshes
-        //-------------------------------------------------------------------------
-
-        m_meshAllocator.Initialize( 1 );
-
-        RHI::BufferParameters meshBufferParameters = {};
-        meshBufferParameters.m_bufferSize = m_meshAllocator.GetCapacityInBytes();
-        meshBufferParameters.m_bufferStride = sizeof( ShaderTypes::Mesh );
-        meshBufferParameters.m_debugName = "System_Renderer MeshBuffer";
-
-        m_pMeshBuffer = RHI::CreateBuffer( m_pContextRHI, meshBufferParameters );
-
-        m_meshClusterAllocator.Initialize( 1 );
-
-        RHI::BufferParameters clusterBufferParameters = {};
-        clusterBufferParameters.m_bufferSize = m_meshClusterAllocator.GetCapacityInBytes();
-        clusterBufferParameters.m_bufferStride = sizeof( ShaderTypes::MeshCluster );
-        clusterBufferParameters.m_debugName = "System_Renderer ClusterBuffer";
-
-        m_pMeshClusterBuffer = RHI::CreateBuffer( m_pContextRHI, clusterBufferParameters );
     }
 
     void RenderSystem::Shutdown()
@@ -241,12 +224,6 @@ namespace EE::Render
         }
         m_resourceDeleteQueue_Texture.clear();
 
-        for ( auto& meshDelete : m_resourceDeleteQueue_Mesh )
-        {
-            DeleteMesh( eastl::move( meshDelete.first.first ), eastl::move( meshDelete.first.second ) );
-        }
-        m_resourceDeleteQueue_Mesh.clear();
-
         for ( auto& shaderDataDelete : m_resourceDeleteQueue_ShaderData )
         {
             DeleteShaderData( eastl::move( shaderDataDelete.first ) );
@@ -265,8 +242,6 @@ namespace EE::Render
         }
         m_resourceDeleteQueue_StagingAllocation.clear();
 
-        m_meshAllocator.Shutdown();
-        m_meshClusterAllocator.Shutdown();
         m_shaderDataAllocator.Shutdown();
 
         for ( RHI::Sampler*& pSampler : m_commonSamplers )
@@ -275,8 +250,6 @@ namespace EE::Render
         }
 
         RHI::DestroyBuffer( m_pContextRHI, eastl::move( m_pShaderDataBuffer ) );
-        RHI::DestroyBuffer( m_pContextRHI, eastl::move( m_pMeshBuffer ) );
-        RHI::DestroyBuffer( m_pContextRHI, eastl::move( m_pMeshClusterBuffer ) );
 
         ShutdownShaders();
 
@@ -366,48 +339,6 @@ namespace EE::Render
 
         {
             Threading::ScopeLockWrite lock( m_asyncResourceUpdateMutex );
-
-            // Async mesh updates
-            //-------------------------------------------------------------------------
-            for ( size_t asyncMeshUpdateIndex = 0; asyncMeshUpdateIndex < m_asyncMeshUpdateQueue.size(); ++asyncMeshUpdateIndex )
-            {
-                AsyncMeshUpdate* pMeshUpdate = m_asyncMeshUpdateQueue[asyncMeshUpdateIndex];
-                AsyncResourceUpdateState updateState = pMeshUpdate->m_updateState.load();
-
-                switch ( updateState )
-                {
-                    case AsyncResourceUpdateState::AllocatePending:
-                    {
-                        pMeshUpdate->m_meshUpdate = CreateMesh( pMeshUpdate->m_numMeshes, pMeshUpdate->m_numClustersForAllMeshes );
-                        pMeshUpdate->m_updateState.store( AsyncResourceUpdateState::UpdatePending );
-                    }
-                    break;
-
-                    case AsyncResourceUpdateState::SubmitPending:
-                    {
-                        QueueMeshUpdate( pMeshUpdate->m_meshUpdate.m_meshHandle, pMeshUpdate->m_meshUpdate.m_clustersHandle );
-
-                        //pMeshUpdate->m_updateState.store( AsyncResourceUpdateState::TransferPending );
-                        pMeshUpdate->m_updateState.store( AsyncResourceUpdateState::CompletePending );
-                    }
-                    break;
-
-                    case AsyncResourceUpdateState::TransferPending:
-                    case AsyncResourceUpdateState::UpdatePending:
-                    case AsyncResourceUpdateState::CompletePending:
-                    {
-                        // Do nothing, waiting for external updates
-                    }
-                    break;
-
-                    case AsyncResourceUpdateState::Completed:
-                    {
-                        EE::Delete( pMeshUpdate );
-                        VectorEraseUnordered( m_asyncMeshUpdateQueue, asyncMeshUpdateIndex-- );
-                    }
-                    break;
-                }
-            }
 
             // Async shader data updates
             //-------------------------------------------------------------------------
@@ -519,7 +450,7 @@ namespace EE::Render
 
         if ( submitResourceUpdatesOnComputeQueue )
         {
-            m_resourceUpdateSemaphores[m_frameIndex] = RHI::QueueSubmit( m_pComputeQueue, { &pCommonCommandBuffer, 1 } );
+            m_resourceUpdateSemaphores[m_frameIndex] = RHI::QueueSubmit( m_pContextRHI, m_pComputeQueue, { &pCommonCommandBuffer, 1 } );
 
             if ( wait )
             {
@@ -528,7 +459,7 @@ namespace EE::Render
         }
         else
         {
-            m_resourceUpdateSemaphores[m_frameIndex] = RHI::QueueSubmit( m_pGraphicsQueue, { &pCommonCommandBuffer, 1 } );
+            m_resourceUpdateSemaphores[m_frameIndex] = RHI::QueueSubmit( m_pContextRHI, m_pGraphicsQueue, { &pCommonCommandBuffer, 1 } );
 
             if ( wait )
             {
@@ -585,7 +516,9 @@ namespace EE::Render
 
         bool hasCopies = false;
         {
-            uint64_t transferSignalSemaphore = RHI::QueueGetCurrentSemaphore( m_pTransferQueue ) + 1;
+            // QueueSubmit signals the fence with the current semaphore value, so the copies
+            // recorded into the command buffer below are covered by exactly this value
+            uint64_t transferSignalSemaphore = RHI::QueueGetCurrentSemaphore( m_pTransferQueue );
             uint64_t transferCompletedSemaphore = RHI::QueueGetCompletedSemaphore( m_pTransferQueue );
 
             EE_ASSERT( transferSignalSemaphore > transferCompletedSemaphore );
@@ -638,7 +571,7 @@ namespace EE::Render
 
                     case AsyncResourceUpdateState::TransferPending:
                     {
-                        if ( transferCompletedSemaphore > pBufferUpdate->m_waitSemaphore )
+                        if ( transferCompletedSemaphore >= pBufferUpdate->m_waitSemaphore )
                         {
                             if ( pBufferUpdate->m_stagingAllocation.IsValid() )
                             {
@@ -659,7 +592,7 @@ namespace EE::Render
 
                     case AsyncResourceUpdateState::Completed:
                     {
-                        if ( transferCompletedSemaphore > pBufferUpdate->m_waitSemaphore )
+                        if ( transferCompletedSemaphore >= pBufferUpdate->m_waitSemaphore )
                         {
                             EE_ASSERT( !pBufferUpdate->m_stagingAllocation.IsValid() );
 
@@ -755,7 +688,7 @@ namespace EE::Render
 
                     case AsyncResourceUpdateState::TransferPending:
                     {
-                        if ( transferCompletedSemaphore > pTextureUpdate->m_waitSemaphore )
+                        if ( transferCompletedSemaphore >= pTextureUpdate->m_waitSemaphore )
                         {
                             EE_ASSERT( pTextureUpdate->m_stagingAllocation.IsValid() );
                             RHI::BufferSubDeallocate( m_pStagingBuffer, eastl::move( pTextureUpdate->m_stagingAllocation ) );
@@ -774,7 +707,7 @@ namespace EE::Render
 
                     case AsyncResourceUpdateState::Completed:
                     {
-                        if ( transferCompletedSemaphore > pTextureUpdate->m_waitSemaphore )
+                        if ( transferCompletedSemaphore >= pTextureUpdate->m_waitSemaphore )
                         {
                             EE_ASSERT( !pTextureUpdate->m_stagingAllocation.IsValid() );
 
@@ -797,7 +730,7 @@ namespace EE::Render
         Memory::WriteCombinedBarrier();
 
         // Submit queue
-        m_asyncTransferSemaphores[m_asyncTransferIndex] = RHI::QueueSubmit( m_pTransferQueue, { &pTransferCommandBuffer, 1 } );
+        m_asyncTransferSemaphores[m_asyncTransferIndex] = RHI::QueueSubmit( m_pContextRHI, m_pTransferQueue, { &pTransferCommandBuffer, 1 } );
 
         m_asyncTransferIndex = ( m_asyncTransferIndex + 1 ) % MaxPendingTransfers;
 
@@ -884,18 +817,6 @@ namespace EE::Render
                 }
             }
 
-            for ( size_t pendingResourceDeleteIndex = 0; pendingResourceDeleteIndex < m_resourceDeleteQueue_Mesh.size(); ++pendingResourceDeleteIndex )
-            {
-                TPair<TPair<MeshHandle, ClustersHandle>, int32_t>& pendingResourceDelete = m_resourceDeleteQueue_Mesh[pendingResourceDeleteIndex];
-                pendingResourceDelete.second--;
-
-                if ( pendingResourceDelete.second < 0 )
-                {
-                    DeleteMesh( eastl::move( pendingResourceDelete.first.first ), eastl::move( pendingResourceDelete.first.second ) );
-                    VectorEraseUnordered( m_resourceDeleteQueue_Mesh, pendingResourceDeleteIndex-- );
-                }
-            }
-
             for ( size_t pendingResourceDeleteIndex = 0; pendingResourceDeleteIndex < m_resourceDeleteQueue_ShaderData.size(); ++pendingResourceDeleteIndex )
             {
                 TPair<ShaderDataHandle, int32_t>& pendingResourceDelete = m_resourceDeleteQueue_ShaderData[pendingResourceDeleteIndex];
@@ -920,6 +841,8 @@ namespace EE::Render
                 }
             }
         }
+
+        RHI::SetCurrentFrameIndex( m_pContextRHI, m_frameIndex );
     }
 
     void RenderSystem::SubmitFrame()
@@ -953,11 +876,11 @@ namespace EE::Render
             Memory::WriteCombinedBarrier();
 
             // Submit queue
-            RHI::QueueSubmit( m_pGraphicsQueue, { &pCommandBuffer, 1 } );
+            RHI::QueueSubmit( m_pContextRHI, m_pGraphicsQueue, { &pCommandBuffer, 1 } );
 
             // Present queue
-            m_frameSemaphoresGraphics[m_frameIndex] = RHI::QueuePresent( m_pGraphicsQueue, pRenderWindow->GetSwapchain(), pRenderWindow->GetCurrentImageIndex() );
-            m_frameSemaphoresCompute[m_frameIndex] = RHI::QueueSubmit( m_pComputeQueue, {} );
+            m_frameSemaphoresGraphics[m_frameIndex] = RHI::QueuePresent( m_pContextRHI, m_pGraphicsQueue, pRenderWindow->GetSwapchain(), pRenderWindow->GetCurrentImageIndex() );
+            m_frameSemaphoresCompute[m_frameIndex] = RHI::QueueSubmit( m_pContextRHI, m_pComputeQueue, {} );
         }
 
         m_frameIndex = ( m_frameIndex + 1 ) % RHI::MaxPendingFrames;
@@ -1043,150 +966,6 @@ namespace EE::Render
         }
 
         EE_UNREACHABLE_CODE();
-    }
-
-    // Meshes
-    //-------------------------------------------------------------------------
-
-    MeshUpdate RenderSystem::CreateMesh( size_t numMeshes, size_t numClustersForAllMeshes )
-    {
-        EE_ASSERT( Threading::IsMainThread() );
-
-        MeshHandle                              meshHandle = m_meshAllocator.Allocate( uint16_t( numMeshes ) );
-        TArrayView<ShaderTypes::Mesh>           outMeshes = { reinterpret_cast<ShaderTypes::Mesh*>( m_meshAllocator.GetData() + meshHandle.m_handle.m_offset ), numMeshes };
-
-        ClustersHandle                          clustersHandle = m_meshClusterAllocator.Allocate( uint32_t( numClustersForAllMeshes ) );
-        TArrayView<ShaderTypes::MeshCluster>    outMeshClusters = { m_meshClusterAllocator.GetData() + clustersHandle.m_handle.m_offset, numClustersForAllMeshes };
-
-        return { meshHandle, clustersHandle, outMeshes, outMeshClusters };
-    }
-
-    void RenderSystem::WriteCommonMeshData( MeshUpdate const& meshUpdate, size_t dstMesh, size_t dstCluster, Geometry const& geometry ) const
-    {
-        ShaderTypes::Mesh& deviceMesh = meshUpdate.m_deviceMeshes[dstMesh];
-
-        uint32_t meshVertexStride = geometry.GetClusterVertexStride();
-        uint32_t numSkinningAttributes = geometry.GetNumSkinningAttributes();
-
-        EE_ASSERT( meshVertexStride <= 256 );
-        EE_ASSERT( numSkinningAttributes <= 2 );
-
-        deviceMesh.m_vertexStride = meshVertexStride;
-        deviceMesh.m_numSkinningAttributes = numSkinningAttributes;
-
-        AABB meshAABB = geometry.GetBounds().GetAABB();
-        meshAABB.m_center.StoreFloat3( deviceMesh.m_aabbCenterLocal );
-        meshAABB.m_halfExtents.StoreFloat3( deviceMesh.m_aabbHalfExtentsLocal );
-
-        uint32_t meshClusterOffset = uint32_t( meshUpdate.m_clustersHandle.m_handle.m_offset + dstCluster );
-
-        deviceMesh.m_clusterOffset = meshClusterOffset;
-        deviceMesh.m_numClusters = geometry.GetNumClusters();
-
-        ShaderTypes::MeshCluster const* pSrcClusters = reinterpret_cast<ShaderTypes::MeshCluster const*>( geometry.GetClusters().data() );
-        for ( size_t clusterIndex = 0; clusterIndex < geometry.GetNumClusters(); ++clusterIndex )
-        {
-            ShaderTypes::MeshCluster cluster = pSrcClusters[clusterIndex];
-
-            #if 0 // TODO: memcopy
-            auto pMaterial = meshData.GetSectionMaterial( cluster.m_sectionIndex );
-            if ( pMaterial == nullptr )
-            {
-                pMaterial = GetPlaceholderMaterial();
-            }
-
-            uint32_t shaderParametersOffsetIn32ByteBlocks = pMaterial->GetShaderParametersOffsetIn32ByteBlocks();
-            cluster.m_shaderParametersOffsetIn32ByteBlocks = shaderParametersOffsetIn32ByteBlocks;
-            #endif
-
-            meshUpdate.m_deviceClusters[dstCluster + clusterIndex] = cluster;
-        }
-    }
-
-    void RenderSystem::DeleteMesh( MeshHandle&& meshHandle, ClustersHandle&& clustersHandle )
-    {
-        EE_ASSERT( Threading::IsMainThread() );
-
-        m_meshAllocator.Deallocate( eastl::move( meshHandle ) );
-        m_meshClusterAllocator.Deallocate( eastl::move( clustersHandle ) );
-    }
-
-    void RenderSystem::QueueMeshUpdate( MeshHandle const& meshHandle, ClustersHandle const& clustersHandle )
-    {
-        EE_ASSERT( Threading::IsMainThread() );
-        EE_ASSERT( m_internalStage[m_frameIndex] == InternalStage::ResourceUpdate );
-
-        size_t meshBufferSize = m_meshAllocator.GetCapacityInBytes();
-        void const* pMeshMemory = m_meshAllocator.GetData();
-
-        size_t clusterBufferSize = m_meshClusterAllocator.GetCapacityInBytes();
-        void const* pClusterMemory = m_meshClusterAllocator.GetData();
-
-        if ( meshHandle.m_handle.m_size > 0 )
-        {
-            if ( !m_pMeshBuffer || m_pMeshBuffer->m_size < meshBufferSize )
-            {
-                QueueResourceDelete( eastl::move( m_pMeshBuffer ) );
-
-                RHI::BufferParameters bufferParameters = {};
-                bufferParameters.m_bufferSize = meshBufferSize;
-                bufferParameters.m_bufferStride = sizeof( ShaderTypes::Mesh );
-                bufferParameters.m_debugName = "System_Renderer MeshBuffer";
-
-                auto CopyBufferMemory = [pMeshMemory, meshBufferSize] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
-                {
-                    EE_ASSERT( dstSize >= meshBufferSize );
-                    Memory::CopyToWriteCombined( pDstMemory_WriteCombined, pMeshMemory, meshBufferSize );
-                };
-                m_pMeshBuffer = QueueBufferCreate( CopyBufferMemory, bufferParameters );
-            }
-            else
-            {
-                auto CopyBufferMemory = [this, meshHandle] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
-                {
-                    Memory::CopyToWriteCombined( pDstMemory_WriteCombined, m_meshAllocator.GetData() + meshHandle.m_handle.m_offset, meshHandle.m_handle.m_size * sizeof( ShaderTypes::Mesh ) );
-                };
-                QueueBufferUpdate( CopyBufferMemory, m_pMeshBuffer, meshHandle.m_handle.m_offset * sizeof( ShaderTypes::Mesh ), meshHandle.m_handle.m_size * sizeof( ShaderTypes::Mesh ) );
-            }
-        }
-
-        if ( clustersHandle.m_handle.m_size > 0 )
-        {
-            if ( !m_pMeshClusterBuffer || m_pMeshClusterBuffer->m_size < clusterBufferSize )
-            {
-                QueueResourceDelete( eastl::move( m_pMeshClusterBuffer ) );
-
-                RHI::BufferParameters bufferParameters = {};
-                bufferParameters.m_bufferSize = clusterBufferSize;
-                bufferParameters.m_bufferStride = sizeof( ShaderTypes::MeshCluster );
-                bufferParameters.m_debugName = "System_Renderer ClusterBuffer";
-
-                auto CopyBufferMemory = [pClusterMemory, clusterBufferSize] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
-                {
-                    EE_ASSERT( dstSize >= clusterBufferSize );
-                    Memory::CopyToWriteCombined( pDstMemory_WriteCombined, pClusterMemory, clusterBufferSize );
-                };
-                m_pMeshClusterBuffer = QueueBufferCreate( CopyBufferMemory, bufferParameters );
-            }
-            else
-            {
-                auto CopyBufferMemory = [this, clustersHandle] ( uint8_t* pDstMemory_WriteCombined, size_t dstSize )
-                {
-                    Memory::CopyToWriteCombined( pDstMemory_WriteCombined, m_meshClusterAllocator.GetData() + clustersHandle.m_handle.m_offset, clustersHandle.m_handle.m_size * sizeof( ShaderTypes::MeshCluster ) );
-                };
-                QueueBufferUpdate( CopyBufferMemory, m_pMeshClusterBuffer, clustersHandle.m_handle.m_offset * sizeof( ShaderTypes::MeshCluster ), clustersHandle.m_handle.m_size * sizeof( ShaderTypes::MeshCluster ) );
-            }
-        }
-    }
-
-    RHI::BufferHandle RenderSystem::GetMeshBufferHandle() const
-    {
-        return RHI::GetBufferHandle( m_pMeshBuffer, RHI::DescriptorTypeFlags::Buffer );
-    }
-
-    RHI::BufferHandle RenderSystem::GetClusterBufferHandle() const
-    {
-        return RHI::GetBufferHandle( m_pMeshClusterBuffer, RHI::DescriptorTypeFlags::Buffer );
     }
 
     // Shaders
@@ -1357,20 +1136,6 @@ namespace EE::Render
         }
 
         return pTextureUpdate;
-    }
-
-    AsyncMeshUpdate* RenderSystem::CreateMeshAsync( size_t numMeshes, size_t numClustersForAllMeshes )
-    {
-        AsyncMeshUpdate* pMeshUpdate = EE::New<AsyncMeshUpdate>();
-        pMeshUpdate->m_numMeshes = numMeshes;
-        pMeshUpdate->m_numClustersForAllMeshes = numClustersForAllMeshes;
-
-        {
-            Threading::ScopeLockWrite lock( m_asyncResourceUpdateMutex );
-            m_asyncMeshUpdateQueue.push_back( pMeshUpdate );
-        }
-
-        return pMeshUpdate;
     }
 
     AsyncMaterialParametersUpdate* RenderSystem::CreateMaterialParametersAsync( size_t shaderIndex )

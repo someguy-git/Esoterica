@@ -439,7 +439,7 @@
     <ClCompile Include="FileSystem\FileSystemWatcher.cpp">
       <Filter>FileSystem</Filter>
     </ClCompile>
-    <ClCompile Include="FileSystem\DataFileSystem.cpp">
+    <ClCompile Include="FileSystem\DataFileRegistry.cpp">
       <Filter>FileSystem</Filter>
     </ClCompile>
     <ClCompile Include="PropertyGrid\PropertyGridEditor.cpp">
@@ -932,7 +932,7 @@
     <ClInclude Include="FileSystem\FileSystemWatcher.h">
       <Filter>FileSystem</Filter>
     </ClInclude>
-    <ClInclude Include="FileSystem\DataFileSystem.h">
+    <ClInclude Include="FileSystem\DataFileRegistry.h">
       <Filter>FileSystem</Filter>
     </ClInclude>
     <ClInclude Include="PropertyGrid\PropertyGridEditor.h">

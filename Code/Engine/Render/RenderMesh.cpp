@@ -5,6 +5,74 @@
 
 namespace EE::Render
 {
+    void MeshStatistics::Accumulate( MeshStatistics const & src )
+    {
+        if ( src.m_numClusters == 0 )
+        {
+            return;
+        }
+
+        uint32_t const dstNumClusters = m_numClusters;
+        uint64_t const totalClusters = uint64_t( dstNumClusters ) + src.m_numClusters;
+        float const totalClustersF = float( totalClusters );
+
+        m_averagePositionBitsPerAxisX = ( m_averagePositionBitsPerAxisX * dstNumClusters + src.m_averagePositionBitsPerAxisX * src.m_numClusters ) / totalClustersF;
+        m_averagePositionBitsPerAxisY = ( m_averagePositionBitsPerAxisY * dstNumClusters + src.m_averagePositionBitsPerAxisY * src.m_numClusters ) / totalClustersF;
+        m_averagePositionBitsPerAxisZ = ( m_averagePositionBitsPerAxisZ * dstNumClusters + src.m_averagePositionBitsPerAxisZ * src.m_numClusters ) / totalClustersF;
+
+        // Medians are not exactly mergeable, approximate with the cluster weighted average
+        m_medianPositionBitsPerAxisX = ( m_medianPositionBitsPerAxisX * dstNumClusters + src.m_medianPositionBitsPerAxisX * src.m_numClusters ) / totalClustersF;
+        m_medianPositionBitsPerAxisY = ( m_medianPositionBitsPerAxisY * dstNumClusters + src.m_medianPositionBitsPerAxisY * src.m_numClusters ) / totalClustersF;
+        m_medianPositionBitsPerAxisZ = ( m_medianPositionBitsPerAxisZ * dstNumClusters + src.m_medianPositionBitsPerAxisZ * src.m_numClusters ) / totalClustersF;
+
+        m_averagePositionBitsPerVertex = ( m_averagePositionBitsPerVertex * dstNumClusters + src.m_averagePositionBitsPerVertex * src.m_numClusters ) / totalClustersF;
+        m_averageClusterUtilization = ( m_averageClusterUtilization * dstNumClusters + src.m_averageClusterUtilization * src.m_numClusters ) / totalClustersF;
+        m_averageCompressionAccuracy = ( m_averageCompressionAccuracy * dstNumClusters + src.m_averageCompressionAccuracy * src.m_numClusters ) / totalClustersF;
+
+        // Medians are not exactly mergeable, approximate with the cluster weighted average
+        m_medianClusterUtilization = ( m_medianClusterUtilization * dstNumClusters + src.m_medianClusterUtilization * src.m_numClusters ) / totalClustersF;
+
+        if ( dstNumClusters > 0 )
+        {
+            m_minimumPositionBitsPerAxisX = Math::Min( m_minimumPositionBitsPerAxisX, src.m_minimumPositionBitsPerAxisX );
+            m_minimumPositionBitsPerAxisY = Math::Min( m_minimumPositionBitsPerAxisY, src.m_minimumPositionBitsPerAxisY );
+            m_minimumPositionBitsPerAxisZ = Math::Min( m_minimumPositionBitsPerAxisZ, src.m_minimumPositionBitsPerAxisZ );
+            m_maximumPositionBitsPerAxisX = Math::Max( m_maximumPositionBitsPerAxisX, src.m_maximumPositionBitsPerAxisX );
+            m_maximumPositionBitsPerAxisY = Math::Max( m_maximumPositionBitsPerAxisY, src.m_maximumPositionBitsPerAxisY );
+            m_maximumPositionBitsPerAxisZ = Math::Max( m_maximumPositionBitsPerAxisZ, src.m_maximumPositionBitsPerAxisZ );
+            m_minimumPositionBitsPerVertex = Math::Min( m_minimumPositionBitsPerVertex, src.m_minimumPositionBitsPerVertex );
+            m_maximumPositionBitsPerVertex = Math::Max( m_maximumPositionBitsPerVertex, src.m_maximumPositionBitsPerVertex );
+            m_minimumClusterUtilization = Math::Min( m_minimumClusterUtilization, src.m_minimumClusterUtilization );
+            m_maximumClusterUtilization = Math::Max( m_maximumClusterUtilization, src.m_maximumClusterUtilization );
+            m_minimumCompressionAccuracy = Math::Min( m_minimumCompressionAccuracy, src.m_minimumCompressionAccuracy );
+        }
+        else
+        {
+            m_minimumPositionBitsPerAxisX = src.m_minimumPositionBitsPerAxisX;
+            m_minimumPositionBitsPerAxisY = src.m_minimumPositionBitsPerAxisY;
+            m_minimumPositionBitsPerAxisZ = src.m_minimumPositionBitsPerAxisZ;
+            m_maximumPositionBitsPerAxisX = src.m_maximumPositionBitsPerAxisX;
+            m_maximumPositionBitsPerAxisY = src.m_maximumPositionBitsPerAxisY;
+            m_maximumPositionBitsPerAxisZ = src.m_maximumPositionBitsPerAxisZ;
+            m_minimumPositionBitsPerVertex = src.m_minimumPositionBitsPerVertex;
+            m_maximumPositionBitsPerVertex = src.m_maximumPositionBitsPerVertex;
+            m_minimumClusterUtilization = src.m_minimumClusterUtilization;
+            m_maximumClusterUtilization = src.m_maximumClusterUtilization;
+            m_minimumCompressionAccuracy = src.m_minimumCompressionAccuracy;
+        }
+
+        m_numClusters += src.m_numClusters;
+        m_numVertices += src.m_numVertices;
+        m_numTriangles += src.m_numTriangles;
+        m_compressedSizeBytes += src.m_compressedSizeBytes;
+        m_uncompressedSizeBytes += src.m_uncompressedSizeBytes;
+        m_compressionRatio = m_uncompressedSizeBytes > 0 ? float( m_compressedSizeBytes ) / float( m_uncompressedSizeBytes ) : 0.0F;
+        m_clusterVertexOverhead = 1.0F - m_averageClusterUtilization;
+        m_vertexTriangleReuse = m_numVertices > 0 ? float( m_numTriangles ) * 3.0F / float( m_numVertices ) : 0.0F;
+    }
+
+    //-------------------------------------------------------------------------
+
     Mesh::Socket const* Mesh::GetSocket( StringID socketID ) const
     {
         for ( auto& socket : m_sockets )

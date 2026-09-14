@@ -41,7 +41,7 @@ namespace EE::Resource
 
             ResourceID                          m_ID;
             String                              m_tabName;
-            DataFileSystem::FileInfo const*     m_pFileInfo = nullptr;
+            DataFileRegistry::FileInfo const*   m_pFileInfo = nullptr;
             TVector<DataPath>                   m_compileDependents;
             TVector<ResourceID>                 m_installDependents;
         };
@@ -61,7 +61,7 @@ namespace EE::Resource
 
     private:
 
-        void OnDataFileSystemUpdated();
+        void OnDataFileRegistryUpdated();
 
         inline int32_t FindViewIndex( ResourceID const& ID ) const
         {
@@ -86,6 +86,6 @@ namespace EE::Resource
         ResourceID                  m_viewFocusRequest;
         TVector<ResourceID>         m_viewCloseRequests;
         ResourcePicker              m_resourcePicker;
-        EventBindingID              m_dataFileSystemUpdateEventBindingID;
+        EventBindingID              m_dataFileRegistryUpdateEventBindingID;
     };
 }

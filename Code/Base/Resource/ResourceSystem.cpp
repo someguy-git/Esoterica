@@ -1,5 +1,5 @@
 #include "ResourceSystem.h"
-#include "ResourceProvider.h"
+#include "IResourceProvider.h"
 #include "ResourceRequest.h"
 #include "Base/Profiling.h"
 
@@ -22,7 +22,7 @@ namespace EE::Resource
         return m_pResourceProvider->GetSettings();
     }
 
-    void ResourceSystem::Initialize( ResourceProvider* pResourceProvider )
+    void ResourceSystem::Initialize( IResourceProvider* pResourceProvider )
     {
         EE_ASSERT( pResourceProvider != nullptr && ( pResourceProvider->IsReady() || pResourceProvider->IsConnecting() ) );
         m_pResourceProvider = pResourceProvider;

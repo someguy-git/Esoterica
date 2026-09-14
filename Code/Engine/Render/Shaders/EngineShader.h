@@ -175,7 +175,8 @@ namespace EE::Render
             MS = 0,
             PS_Default,
             PS_AlphaTest,
-            PS_DepthOnly_AlphaTest
+            PS_DepthOnly_AlphaTest,
+            PS_OutlineID
         };
 
     public:
@@ -195,6 +196,10 @@ namespace EE::Render
         RHI::RootSignature*                             m_pRootSignature = nullptr;
         TArray<RHI::Shader*, PermutationCount>          m_shaders = {};
         RHI::CommandSignature*                          m_pCommandSignature = nullptr;
+
+        #if EE_DEVELOPMENT_TOOLS
+        RHI::Shader*                                    m_pOutlineShader = nullptr;
+        #endif
     };
 
     // Surface shader
@@ -213,6 +218,10 @@ namespace EE::Render
 
         StringID                                        m_shaderName;
         RHI::RootSignature*                             m_pRootSignature = nullptr;
+
+        #if EE_DEVELOPMENT_TOOLS
+        RHI::Shader*                                    m_pOutlineShader = nullptr;
+        #endif
         RHI::Shader*                                    m_pShader = nullptr;
         RHI::CommandSignature*                          m_pCommandSignatureDraw = nullptr;
         RHI::CommandSignature*                          m_pCommandSignatureDrawIndexed = nullptr;

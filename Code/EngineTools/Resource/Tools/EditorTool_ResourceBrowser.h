@@ -104,12 +104,12 @@ namespace EE::Resource
 
         void DrawFileView( UpdateContext const& context );
 
-        bool DoesFileMatchFilter( DataFileSystem::FileInfo const* pFile, bool applyNameFilter = false );
+        bool DoesFileMatchFilter( DataFileRegistry::FileInfo const* pFile, bool applyNameFilter = false );
         void GenerateDirectoryContentsList();
         void SortFileList();
         void SetSelectedFile( DataPath const& filePath, bool setFocus );
-        void DrawDirectoryInfoContextMenu( DataFileSystem::DirectoryInfo const& directoryInfo, bool isFileListView );
-        void DrawFileInfoContextMenu( DataFileSystem::FileInfo const& fileInfo );
+        void DrawDirectoryInfoContextMenu( DataFileRegistry::DirectoryInfo const& directoryInfo, bool isFileListView );
+        void DrawFileInfoContextMenu( DataFileRegistry::FileInfo const& fileInfo );
 
     private:
 
@@ -137,8 +137,8 @@ namespace EE::Resource
         // Selected Directory Contents
         //-------------------------------------------------------------------------
 
-        TVector<DataFileSystem::DirectoryInfo>                m_directoryList;
-        TVector<DataFileSystem::FileInfo>                     m_fileList;
+        TVector<DataFileRegistry::DirectoryInfo>              m_directoryList;
+        TVector<DataFileRegistry::FileInfo>                   m_fileList;
         TVector<int32_t>                                    m_sortedFileListIndices;
         DataPath                                            m_selectedItem;
     };

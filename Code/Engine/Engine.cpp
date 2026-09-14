@@ -6,7 +6,7 @@
 #include "Base/Logging/SystemLog.h"
 #include "Base/Utils/CommandLineParser.h"
 #include "Base/Resource/Settings/Settings_Resource.h"
-#include "Base/Resource/ResourceProvider.h"
+#include "Base/Resource/IResourceProvider.h"
 
 //-------------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ namespace EE
         cl.AddOptionalStringArg( "map", "The startup map." );
 
         #if EE_DEVELOPMENT_TOOLS
-        cl.AddOptionalBoolArg( "packaged", "Should we use packaged data instead of the networked resource server", false );
+        cl.AddOptionalBoolArg( "usecompileddata", "Should we use the already compiled data instead of on-demand-compilation", false );
         #endif
 
         if ( !cl.Parse( argc, argv ) )
@@ -88,8 +88,8 @@ namespace EE
         #if EE_DEVELOPMENT_TOOLS
         auto pResourceSettings = pSettingsRegistry->GetSettings<Resource::ResourceSettings>();
         EE_ASSERT( pResourceSettings != nullptr );
-        bool const usePackagedResourceProvider = cl.GetBoolArg( "packaged" );
-        pResourceSettings->SetUsePackagedResourceProvider( usePackagedResourceProvider );
+        bool const useCompiledData = cl.GetBoolArg( "usecompileddata" );
+        pResourceSettings->SetUseNetworkResourceProvider( !useCompiledData );
         #endif
 
         //-------------------------------------------------------------------------

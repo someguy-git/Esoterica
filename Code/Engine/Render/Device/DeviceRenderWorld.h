@@ -3,10 +3,13 @@
 #include "Engine/Render/RenderProxies.h"
 #include "Engine/Render/Device/DeviceResizeBuffer.h"
 #include "Engine/Render/Shaders/EngineShader.h"
+#include "Engine/Render/Shaders/Renderer/RendererTypes.esh"
 #include "Base/Threading/TaskSystem.h"
 #include "Base/Profiling.h"
 #include "Base/Render/PageAllocator.h"
+#include "Base/Render/RHI.h"
 #include "Base/Resource/ResourcePtr.h"
+#include "Base/Types/Containers_ForwardDecl.h"
 
 #include "Engine/Render/Shaders/Renderer/WorldUpdate.esh"
 
@@ -14,11 +17,7 @@
 
 namespace EE::Render
 {
-    class Mesh;
-    class SkeletalMesh;
     class RenderSystem;
-    class Material;
-    class MaterialShaderClusterCapacity;
 
     // World representation in device memory for rendering purposes
     //-------------------------------------------------------------------------
@@ -29,7 +28,7 @@ namespace EE::Render
 
         uint32_t GetSkinningTransformBufferCapacity() const;
 
-        uint32_t GetNumMeshInstancePages() const;
+        uint32_t GetNumMeshInstanceRootPages() const;
 
         uint32_t GetNumDirectionalLightPages() const;
         uint32_t GetNumPointLightPages() const;
@@ -38,10 +37,12 @@ namespace EE::Render
         void Initialize( TaskSystem* pTaskSystem, RenderSystem* pRenderSystem );
         void Shutdown( RenderSystem* pRenderSystem );
 
-        MeshInstanceProxy AllocateMeshInstanceRoot( uint32_t num64ByteBlocks );
-        void DeallocateMeshInstanceRoot( MeshInstanceProxy&& meshInstanceProxy );
+        //-------------------------------------------------------------------------
 
-        MeshInstanceProxy AllocateMeshInstance( uint32_t numInstances );
+        MeshInstanceRootProxy AllocateMeshInstanceRoot();
+        void DeallocateMeshInstanceRoot( MeshInstanceRootProxy&& meshInstanceRootProxy );
+
+        MeshInstanceProxy AllocateMeshInstance( uint32_t shaderIndex, TArrayView<uint32_t const> numClustersPerInstance );
         void DeallocateMeshInstance( MeshInstanceProxy&& meshInstanceProxy );
 
         SkinningProxy AllocateSkinningInstance( uint32_t numBones );
@@ -54,21 +55,22 @@ namespace EE::Render
         void DeallocatePointLight( LightInstanceProxy&& lightInstanceProxy );
         void DeallocateSpotLight( LightInstanceProxy&& lightInstanceProxy );
 
-        void QueueMeshInstanceInitialize( uint32_t instanceID, uint32_t rootInstanceID, Mesh const* pMesh, TInlineVector<Material const*, 50> const& resolvedMaterials );
+        //-------------------------------------------------------------------------
+
+        void QueueMeshInstanceInitialize( MeshInstanceProxy const& meshInstanceProxy, uint32_t rootInstanceID, RHI::Buffer* pMeshBuffer, uint32_t shaderParametersOffsetIn32ByteBlocks, uint32_t numClusters, uint32_t lodMask, uint32_t instanceIndex, uint32_t clusterToInstanceBase, bool instanceHidden );
+
+        //-------------------------------------------------------------------------
 
         // TODO: This is 2 functions for stupid reasons, need to refactor.
         // WorldSystem_Render has a dumb circular dependency when queueing instance initialize commands
         void UpdateDeviceResources_BeforeInstanceInitialize( RenderSystem* pRenderSystem );
         void UpdateDeviceResources_AfterInstanceInitialize( RenderSystem* pRenderSystem );
 
-        void UpdateDeviceResources_CullingBuffers( RenderSystem* pRenderSystem, MaterialShaderClusterCapacity const& materialShaderClusterCapacity, uint32_t numMaterialShaderKeys );
-
-        void DispatchWorldUpdate( RHI::BufferHandle meshBuffer, RHI::CommandBuffer* pCommandBuffer, uint32_t frameIndex );
+        void DispatchWorldUpdate( RHI::CommandBuffer* pCommandBuffer, uint32_t frameIndex );
         void WaitForCopyTasks( RenderSystem* pRenderSystem );
 
-        RHI::BufferHandle GetMeshInstancePageBufferHandle( uint32_t frameIndex ) const;
+        RHI::BufferHandle GetMeshInstanceRootPageBufferHandle( uint32_t frameIndex ) const;
         RHI::BufferHandle GetSkinningTransformBufferHandle() const;
-        RHI::BufferHandle GetMeshInstanceBufferHandle() const;
         RHI::BufferHandle GetMeshInstanceRootBufferHandle() const;
 
         RHI::BufferHandle GetDirectionalLightPageBufferHandle( uint32_t frameIndex ) const;
@@ -79,14 +81,71 @@ namespace EE::Render
         RHI::BufferHandle GetPointLightBufferHandle() const;
         RHI::BufferHandle GetSpotLightBufferHandle() const;
 
-        RHI::Buffer* GetMeshInstanceBuffer() const;
         RHI::Buffer* GetMeshInstanceRootBuffer() const;
 
-        RHI::Buffer* GetClusterRecordBuffer() const;
-        RHI::Buffer* GetClusterRecordOffsetsBuffer() const;
-        RHI::Buffer* GetInstanceCullingVisibilityBuffer() const;
+        uint32_t GetNumMeshInstanceShaderPools() const;
+        uint32_t GetMeshInstanceCapacity( size_t shaderIndex ) const;
+        uint32_t GetClusterCapacity( size_t shaderIndex ) const;
+
+        RHI::Buffer* GetMeshInstancePageBuffer( uint32_t shaderIndex, uint32_t frameIndex ) const;
+        RHI::Buffer* GetMeshInstanceBuffer( uint32_t shaderIndex ) const;
+        RHI::Buffer* GetClusterToInstanceBuffer( uint32_t shaderIndex ) const;
 
     private:
+
+        //-------------------------------------------------------------------------
+
+        template <typename T>
+        struct UpdateCommandsPool
+        {
+            UpdateCommandsPool() = default;
+
+            UpdateCommandsPool( UpdateCommandsPool const& ) = delete;
+            UpdateCommandsPool& operator=( UpdateCommandsPool const& ) = delete;
+
+            UpdateCommandsPool( UpdateCommandsPool&& other ) noexcept
+                : m_counter( other.m_counter.load() )
+                , m_sequence( other.m_sequence )
+                , m_memoryPool( eastl::move( other.m_memoryPool ) )
+                , m_numUpdateCommands( other.m_numUpdateCommands )
+            {}
+
+            UpdateCommandsPool& operator=( UpdateCommandsPool&& other ) noexcept
+            {
+                m_counter.store( other.m_counter.load() );
+                m_sequence = other.m_sequence;
+                m_memoryPool = eastl::move( other.m_memoryPool );
+                m_numUpdateCommands = other.m_numUpdateCommands;
+                return *this;
+            }
+
+            void Initialize();
+            void Shutdown();
+
+            void Update();
+            void Submit();
+
+            //-------------------------------------------------------------------------
+
+            eastl::atomic<uint32_t>                                                 m_counter = 0;
+            uint64_t                                                                m_sequence = 0;
+            PageMemoryPool<T>                                                       m_memoryPool = {};
+            uint32_t                                                                m_numUpdateCommands = 0;
+        };
+
+        //-------------------------------------------------------------------------
+
+        struct MeshInstanceShaderPool
+        {
+            HandleAllocator<uint32_t>                                           m_instanceAllocator = {};
+            DeviceResizeBuffer                                                  m_instanceBuffer = {};
+            TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>                   m_instancePageBuffers = {};
+
+            HandleAllocator<uint32_t>                                           m_clusterAllocator = {};
+            DeviceResizeBuffer                                                  m_clusterToInstanceBuffer = {};
+        };
+
+        //-------------------------------------------------------------------------
 
         template<typename T>
         class CopyBufferDataTask final : public ITaskSet
@@ -95,6 +154,30 @@ namespace EE::Render
 
             T const* m_pSrcMemory = nullptr;
             T*       m_pDstMemory_WriteCombined = nullptr;
+
+            CopyBufferDataTask() = default;
+
+            CopyBufferDataTask( CopyBufferDataTask const& ) = delete;
+            CopyBufferDataTask& operator=( CopyBufferDataTask const& ) = delete;
+
+            CopyBufferDataTask( CopyBufferDataTask&& other ) noexcept
+                : m_pSrcMemory( other.m_pSrcMemory )
+                , m_pDstMemory_WriteCombined( other.m_pDstMemory_WriteCombined )
+            {
+                other.m_pSrcMemory = nullptr;
+                other.m_pDstMemory_WriteCombined = nullptr;
+            }
+
+            CopyBufferDataTask& operator=( CopyBufferDataTask&& other ) noexcept
+            {
+                m_pSrcMemory = other.m_pSrcMemory;
+                m_pDstMemory_WriteCombined = other.m_pDstMemory_WriteCombined;
+
+                other.m_pSrcMemory = nullptr;
+                other.m_pDstMemory_WriteCombined = nullptr;
+
+                return *this;
+            }
 
         private:
 
@@ -111,30 +194,21 @@ namespace EE::Render
             }
         };
 
-        template <typename T>
-        struct UpdateCommandsPool
-        {
-            void Initialize();
-            void Shutdown();
+    private:
 
-            void Update();
-            void Submit();
+        //-------------------------------------------------------------------------
 
-            //-------------------------------------------------------------------------
-
-            eastl::atomic<uint32_t>                                                 m_counter = 0;
-            uint64_t                                                                m_sequence = 0;
-            PageMemoryPool<T>                                                       m_memoryPool = {};
-            uint32_t                                                                m_numUpdateCommands = 0;
-        };
+        MeshInstanceShaderPool& GetMeshInstanceShaderPool( uint32_t shaderIndex );
 
     private:
 
+        //-------------------------------------------------------------------------
+
         TaskSystem*                                                                 m_pTaskSystem = nullptr;
+        RHI::Context*                                                               m_pContextRHI = nullptr;
 
         ComputeShader const*                                                        m_pWorldUpdateShader = nullptr;
-
-        Material const*                                                             m_pPlaceholderMaterial = nullptr;
+        ComputeShader const*                                                        m_pClusterToInstanceUpdateShader = nullptr;
 
         // TODO: Need some kind of scratch GPU memory allocator to avoid tracking all these buffers
         TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>                           m_initializeBuffers_MeshInstance = {};
@@ -152,32 +226,30 @@ namespace EE::Render
         TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>                           m_updateBuffers_SkinningTransform = {};
 
         // TODO: Use QueueBufferUpdate API instead of triple buffering it, should save a lot of memory
-        TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>                           m_meshInstancePageBuffers = {};
+        TArray<DeviceResizeBuffer, RHI::MaxPendingFrames>                           m_meshInstanceRootPageBuffers = {};
 
         DeviceResizeBuffer                                                          m_meshInstanceRootBuffer = {};
-        DeviceResizeBuffer                                                          m_meshInstanceBuffer = {};
         DeviceResizeBuffer                                                          m_directionalLightBuffer = {};
         DeviceResizeBuffer                                                          m_pointLightBuffer = {};
         DeviceResizeBuffer                                                          m_spotLightBuffer = {};
         DeviceResizeBuffer                                                          m_skinningTransformBuffer = {};
 
-        DeviceResizeBuffer                                                          m_clusterRecordBuffer = {};
-        DeviceResizeBuffer                                                          m_clusterRecordOffsetsBuffer = {};
-        DeviceResizeBuffer                                                          m_instanceCullingVisibilityBuffer = {};
+        TVector<MeshInstanceShaderPool>                                             m_meshInstanceShaderPools;
 
-        TAlignedVector<uint32_t>                                                    m_clusterRecordOffsets;
+        DeviceResizeBuffer                                                          m_meshInstanceBufferHandles = {};
+
+        DeviceResizeBuffer                                                          m_clusterToInstanceBufferHandles = {};
 
         TArray<RHI::Buffer*, RHI::MaxPendingFrames>                                 m_worldUpdateConstantBuffers = {};
 
         HandleAllocator<uint32_t>                                                   m_meshInstanceRootHandleAllocator = {};
-        HandleAllocator<uint32_t>                                                   m_meshInstanceHandleAllocator = {};
         HandleAllocator<uint32_t>                                                   m_skinningTransformHandleAllocator = {};
         HandleAllocator<uint32_t>                                                   m_directionalLightHandleAllocator = {};
         HandleAllocator<uint32_t>                                                   m_pointLightHandleAllocator = {};
         HandleAllocator<uint32_t>                                                   m_spotLightHandleAllocator = {};
 
         UpdateCommandsPool<ShaderTypes::MeshInstanceRootUpdateCommand>              m_updatePool_MeshInstanceRoot = {};
-        UpdateCommandsPool<ShaderTypes::MeshInstanceTransformUpdateCommand>         m_updatePool_MeshInstance = {};
+        UpdateCommandsPool<ShaderTypes::MeshInstanceTransformUpdateCommand>          m_updatePool_MeshInstance = {};
         UpdateCommandsPool<ShaderTypes::DirectionalLightUpdateCommand>              m_updatePool_DirectionalLight = {};
         UpdateCommandsPool<ShaderTypes::PointLightUpdateCommand>                    m_updatePool_PointLight = {};
         UpdateCommandsPool<ShaderTypes::SpotLightUpdateCommand>                     m_updatePool_SpotLight = {};
@@ -189,7 +261,7 @@ namespace EE::Render
         CopyBufferDataTask<ShaderTypes::MeshInstanceInitializeCommand>              m_copyInitializeCommands_MeshInstance;
 
         CopyBufferDataTask<ShaderTypes::MeshInstanceRootUpdateCommand>              m_copyUpdateCommands_MeshInstanceRoot;
-        CopyBufferDataTask<ShaderTypes::MeshInstanceTransformUpdateCommand>         m_copyUpdateCommands_MeshInstance;
+        CopyBufferDataTask<ShaderTypes::MeshInstanceTransformUpdateCommand>          m_copyUpdateCommands_MeshInstance;
         CopyBufferDataTask<ShaderTypes::DirectionalLightUpdateCommand>              m_copyUpdateCommands_DirectionalLight;
         CopyBufferDataTask<ShaderTypes::PointLightUpdateCommand>                    m_copyUpdateCommands_PointLight;
         CopyBufferDataTask<ShaderTypes::SpotLightUpdateCommand>                     m_copyUpdateCommands_SpotLight;

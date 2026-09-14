@@ -52,9 +52,10 @@ namespace EE::Serialization
         void ReadValue( float& v );
         void ReadValue( double& v );
         void ReadValue( Blob& blob );
+        void ReadValue( AlignedBlob& blob );
         void ReadValue( String& v );
         void ReadValue( InlineString& v );
-        void ReadValue( StringID& v);
+        void ReadValue( StringID& v );
 
         void ReadBinaryData( void* pData, size_t size );
 
@@ -98,6 +99,7 @@ namespace EE::Serialization
         void WriteValue( float v );
         void WriteValue( double v );
         void WriteValue( Blob const& blob );
+        void WriteValue( AlignedBlob const& blob );
         void WriteValue( String const& v );
         void WriteValue( InlineString const& v );
         void WriteValue( StringID const& v );
@@ -319,7 +321,7 @@ namespace EE::Serialization
             //-------------------------------------------------------------------------
 
             template<typename K, typename V>
-            Archive& operator<<( THashMap<K,V>& map )
+            Archive& operator<<( THashMap<K, V>& map )
             {
                 if constexpr ( std::is_same<Serializer, BinaryReader>::value )
                 {
@@ -383,6 +385,27 @@ namespace EE::Serialization
             Archive& operator<<( Blob const& blob )
             {
                 return operator<<( const_cast<Blob&>( blob ) );
+            }
+
+            template<>
+            Archive& operator<<( AlignedBlob& blob )
+            {
+                if constexpr ( std::is_same<Serializer, BinaryReader>::value )
+                {
+                    m_serializer.ReadValue( blob );
+                }
+                else // Writing
+                {
+                    m_serializer.WriteValue( blob );
+                }
+
+                return *this;
+            }
+
+            template<>
+            Archive& operator<<( AlignedBlob const& blob )
+            {
+                return operator<<( const_cast<AlignedBlob&>( blob ) );
             }
 
             // Fold expression to allow for the serialize macros to work

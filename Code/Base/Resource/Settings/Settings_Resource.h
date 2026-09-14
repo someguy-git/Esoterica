@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Base/_Module/API.h"
-#include "Base/Math/Math.h"
 #include "Base/FileSystem/FileSystemPath.h"
 #include "Base/Settings/Settings.h"
 
@@ -18,7 +17,7 @@ namespace EE::Resource
         // Default paths are relative to the working directory of the process
 
         constexpr static char const * const s_defaultSourceDataPath = "./../../Data/";
-        constexpr static char const * const s_defaultPackagedBuildName = "x64_Shipping";
+        constexpr static char const * const s_defaultShippingBuildName = "x64_Shipping";
 
         // Resource Compiler
         //-------------------------------------------------------------------------
@@ -46,20 +45,20 @@ namespace EE::Resource
         // Resource Provider
         //-------------------------------------------------------------------------
 
-        // Should we use the packaged resource data or the network resource provider
-        inline bool UsePackagedResourceProvider() const
+        // Should we use the pre-compiled resource data or the network resource provider
+        inline bool UseNetworkResourceProvider() const
         {
             #if EE_DEVELOPMENT_TOOLS
-            return m_usePackagedResourceProvider;
+            return m_useNetworkResourceProvider;
             #else
-            return true;
+            return false;
             #endif
         }
 
         #if EE_DEVELOPMENT_TOOLS
-        inline void SetUsePackagedResourceProvider( bool usePackagedResourceProvider )
+        inline void SetUseNetworkResourceProvider( bool useNetworkResourceProvider )
         {
-            m_usePackagedResourceProvider = usePackagedResourceProvider;
+            m_useNetworkResourceProvider = useNetworkResourceProvider;
         }
         #endif
 
@@ -82,7 +81,7 @@ namespace EE::Resource
         String                  m_sourceDataDirectoryPathStr = s_defaultSourceDataPath;
 
         EE_REFLECT();
-        String                  m_packagedBuildName = s_defaultPackagedBuildName;
+        String                  m_shippingBuildName = s_defaultShippingBuildName;
 
         EE_REFLECT();
         String                  m_compiledDatabaseName = s_defaultCompiledResourceDatabaseName;
@@ -104,7 +103,7 @@ namespace EE::Resource
         //-------------------------------------------------------------------------
 
         #if EE_DEVELOPMENT_TOOLS
-        bool                    m_usePackagedResourceProvider = false;
+        bool                    m_useNetworkResourceProvider = true;
         #endif
 
         // Derived Paths
@@ -114,7 +113,7 @@ namespace EE::Resource
 
         #if EE_DEVELOPMENT_TOOLS
         FileSystem::Path        m_sourceDataDirectoryPath;
-        FileSystem::Path        m_packagedBuildCompiledResourceDirectoryPath;
+        FileSystem::Path        m_shippingBuildCompiledResourceDirectoryPath;
         FileSystem::Path        m_compiledResourceDatabasePath;
         FileSystem::Path        m_resourceCompilerExecutablePath;
         FileSystem::Path        m_resourceServerExecutablePath;

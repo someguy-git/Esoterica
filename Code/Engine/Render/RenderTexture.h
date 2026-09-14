@@ -13,7 +13,7 @@ namespace EE::Render
 {
     class EE_ENGINE_API TextureResource final : public Resource::IResource
     {
-        EE_RESOURCE( "texture", "Texture Resource", Colors::DarkCyan, 19, true );
+        EE_RESOURCE( "texture", "Texture Resource", Colors::DarkCyan, 20, true );
 
         EE_SERIALIZE( m_width,
                       m_height,

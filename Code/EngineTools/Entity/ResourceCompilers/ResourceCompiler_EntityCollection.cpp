@@ -17,11 +17,18 @@ namespace EE::EntityModel
         auto pCollectionResourceDescriptor = ctx.GetDescriptor<EntityCollectionResourceDescriptor>();
 
         //-------------------------------------------------------------------------
+        // Sanitize collection
+        //-------------------------------------------------------------------------
+
+        EntityCollection ec = pCollectionResourceDescriptor->m_collection;
+        ec.RemoveInvalidComponentsAndSystems( ctx.m_typeRegistry, ctx.GetLog(), ctx.IsCompilingForShippingBuild() );
+
+        //-------------------------------------------------------------------------
         // Serialize
         //-------------------------------------------------------------------------
 
         Serialization::BinaryOutputArchive archive;
-        archive << Resource::ResourceHeader( EntityCollection::s_version, EntityCollection::GetStaticResourceTypeID(), ctx.m_sourceResourceHash ) << pCollectionResourceDescriptor->m_collection;
+        archive << Resource::ResourceHeader( EntityCollection::s_version, EntityCollection::GetStaticResourceTypeID(), ctx.m_sourceResourceHash ) << ec;
         
         if ( archive.WriteToFile( ctx.GetOutputPath() ) )
         {

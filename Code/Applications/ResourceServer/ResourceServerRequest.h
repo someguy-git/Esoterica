@@ -15,7 +15,7 @@ namespace EE::Resource
         ManualCompileForced,
         FileWatcher,
         UnblockedRecompilationRequest,
-        Package
+        Publish
     };
 
     enum class RequestStatus
@@ -41,8 +41,8 @@ namespace EE::Resource
         // Returns whether the request was externally requested (i.e. by a client) or internally requested (i.e. due to a file changing and being detected)
         inline bool IsInternalRequest() const { return m_origin != RequestOrigin::Network; }
 
-        // Is this a packaging request
-        inline bool IsPackagingRequest() const { return m_origin == RequestOrigin::Package; }
+        // Is this a publishing request
+        inline bool IsPublishRequest() const { return m_origin == RequestOrigin::Publish; }
 
         // Is this a manual forced recompilation
         inline bool IsForcedCompilation() const { return m_origin == RequestOrigin::ManualCompileForced; }
@@ -87,7 +87,7 @@ namespace EE::Resource
 
         RequestBucket( Request const* pRequest )
             : m_resourceID( pRequest->m_resourceID )
-            , m_isPackagingRequest( pRequest->IsPackagingRequest() )
+            , m_isPackagingRequest( pRequest->IsPublishRequest() )
             , m_isForcedCompilation( pRequest->IsForcedCompilation() )
         {
             EE_ASSERT( m_resourceID.IsValid() );
@@ -100,7 +100,7 @@ namespace EE::Resource
                 return false;
             }
 
-            if ( m_isPackagingRequest != pRequest->IsPackagingRequest() )
+            if ( m_isPackagingRequest != pRequest->IsPublishRequest() )
             {
                 return false;
             }

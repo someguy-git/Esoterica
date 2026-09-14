@@ -26,7 +26,7 @@ namespace EE::Render
 
     //-------------------------------------------------------------------------
 
-    void MeshInstanceProxy::WriteRootTransform( Transform const& worldTransform, Float3 worldNonUniformScale, Float3 worldAABBCenter, Float3 worldAABBHalfExtents )
+    void MeshInstanceRootProxy::WriteRootTransform( Transform const& worldTransform, Float3 worldNonUniformScale, Float3 worldAABBCenter, Float3 worldAABBHalfExtents )
     {
         EE_ASSERT( m_pTransformUpdateCounter != nullptr );
         EE_ASSERT( IsValid() );
@@ -48,10 +48,10 @@ namespace EE::Render
             m_dstTransformUpdateSequence = transformUpdateSequence;
         }
 
-        *( m_pDstRootUpdateCommands + m_dstTransformUpdateIndex ) = updateCommand;
+        *( m_pDstUpdateCommands + m_dstTransformUpdateIndex ) = updateCommand;
     }
 
-    void MeshInstanceProxy::WriteLocalTransforms( TArrayView<Matrix43 const> localTransforms )
+    void MeshInstanceProxy::StartLocalTransformWrite()
     {
         EE_ASSERT( m_pTransformUpdateCounter != nullptr );
         EE_ASSERT( IsValid() );
@@ -63,15 +63,27 @@ namespace EE::Render
             m_dstTransformUpdateSequence = transformUpdateSequence;
         }
 
-        for ( uint32_t instanceIndex = 0; instanceIndex < m_instanceHandle.m_size; ++instanceIndex )
-        {
-            ShaderTypes::MeshInstanceTransformUpdateCommand instanceUpdateCommand = {};
-            instanceUpdateCommand.m_instanceID = uint32_t( m_instanceHandle.m_offset + instanceIndex );
+        m_numWrittenLocalTransforms = 0;
+    }
 
-            memcpy( &instanceUpdateCommand.m_transform, &localTransforms[instanceIndex], sizeof( Matrix43 ) );
+    void MeshInstanceProxy::WriteLocalTransform( Matrix43 const& localTransform )
+    {
+        EE_ASSERT( IsValid() );
+        EE_ASSERT( m_numWrittenLocalTransforms < m_instanceHandle.m_size );
 
-            *( m_pDstTransformUpdateCommands + m_dstTransformUpdateIndex + instanceIndex ) = instanceUpdateCommand; // TODO: We want to keep instance transforms intact and instead upload one shared transform.
-        }
+        ShaderTypes::MeshInstanceTransformUpdateCommand instanceUpdateCommand = {};
+        instanceUpdateCommand.m_instanceID = uint32_t( m_instanceHandle.m_offset + m_numWrittenLocalTransforms );
+        instanceUpdateCommand.m_shaderIndex = m_shaderIndex;
+
+        memcpy( &instanceUpdateCommand.m_transform, &localTransform, sizeof( Matrix43 ) );
+
+        m_pDstTransformUpdateCommands[m_dstTransformUpdateIndex + m_numWrittenLocalTransforms] = instanceUpdateCommand; // TODO: We want to keep instance transforms intact and instead upload one shared transform.
+        m_numWrittenLocalTransforms++;
+    }
+
+    void MeshInstanceProxy::SubmitLocalTransformWrite() const
+    {
+        EE_ASSERT( m_numWrittenLocalTransforms == m_instanceHandle.m_size );
     }
 
     //-------------------------------------------------------------------------

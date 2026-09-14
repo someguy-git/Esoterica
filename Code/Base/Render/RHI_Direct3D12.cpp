@@ -331,6 +331,7 @@ namespace EE::Render::RHI
             case DataFormat::RGBA32_SFloat: return DXGI_FORMAT_R32G32B32A32_FLOAT;
             case DataFormat::RG11_B10_UFloat: return DXGI_FORMAT_R11G11B10_FLOAT;
             case DataFormat::RGB9_E5_UFloat: return DXGI_FORMAT_R9G9B9E5_SHAREDEXP;
+            case DataFormat::D16_UNorm: return DXGI_FORMAT_D16_UNORM;
             case DataFormat::D32_SFloat: return DXGI_FORMAT_D32_FLOAT;
             case DataFormat::D32_SFloat_S8_UInt: return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
             case DataFormat::S8_Uint: return DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -1833,6 +1834,232 @@ namespace EE::Render::RHI
         }
     }
 
+    static char const* DredAllocationTypeToString( D3D12_DRED_ALLOCATION_TYPE allocationType )
+    {
+        switch ( allocationType )
+        {
+            case D3D12_DRED_ALLOCATION_TYPE_COMMAND_QUEUE: return "Command Queue"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_COMMAND_ALLOCATOR: return "Command Allocator"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_PIPELINE_STATE: return "Pipeline State"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_COMMAND_LIST: return "Command List"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_FENCE: return "Fence"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_DESCRIPTOR_HEAP: return "Descriptor Heap"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_HEAP: return "Heap"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_QUERY_HEAP: return "Query Heap"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_COMMAND_SIGNATURE: return "Command Signature"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_PIPELINE_LIBRARY: return "Pipeline Library"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_VIDEO_DECODER: return "Video Decoder"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_VIDEO_PROCESSOR: return "Video Processor"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_RESOURCE: return "Resource"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_PASS: return "Pass"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_COMMAND_POOL: return "Command Pool"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_STATE_OBJECT: return "State Object"; break;
+            case D3D12_DRED_ALLOCATION_TYPE_INVALID: return "Invalid"; break;
+            default: return "Unknown"; break;
+        }
+    }
+
+    static char const* DredAutoBreadcrumbOpToString( uint32_t op )
+    {
+        switch ( op )
+        {
+            case D3D12_AUTO_BREADCRUMB_OP_SETMARKER: return "SetMarker";
+            case D3D12_AUTO_BREADCRUMB_OP_BEGINEVENT: return "BeginEvent";
+            case D3D12_AUTO_BREADCRUMB_OP_ENDEVENT: return "EndEvent";
+            case D3D12_AUTO_BREADCRUMB_OP_DRAWINSTANCED: return "DrawInstanced";
+            case D3D12_AUTO_BREADCRUMB_OP_DRAWINDEXEDINSTANCED: return "DrawIndexedInstanced";
+            case D3D12_AUTO_BREADCRUMB_OP_EXECUTEINDIRECT: return "ExecuteIndirect";
+            case D3D12_AUTO_BREADCRUMB_OP_DISPATCH: return "Dispatch";
+            case D3D12_AUTO_BREADCRUMB_OP_COPYBUFFERREGION: return "CopyBufferRegion";
+            case D3D12_AUTO_BREADCRUMB_OP_COPYTEXTUREREGION: return "CopyTextureRegion";
+            case D3D12_AUTO_BREADCRUMB_OP_COPYRESOURCE: return "CopyResoure";
+            case D3D12_AUTO_BREADCRUMB_OP_COPYTILES: return "CopyTiles";
+            case D3D12_AUTO_BREADCRUMB_OP_RESOLVESUBRESOURCE: return "ResolveSubresource";
+            case D3D12_AUTO_BREADCRUMB_OP_CLEARRENDERTARGETVIEW: return "ClearRenderTargetView";
+            case D3D12_AUTO_BREADCRUMB_OP_CLEARUNORDEREDACCESSVIEW: return "ClearUnorderedAccessView";
+            case D3D12_AUTO_BREADCRUMB_OP_CLEARDEPTHSTENCILVIEW: return "ClearDepthStencilView";
+            case D3D12_AUTO_BREADCRUMB_OP_RESOURCEBARRIER: return "ResourceBarrier";
+            case D3D12_AUTO_BREADCRUMB_OP_EXECUTEBUNDLE: return "ExecuteBundle";
+            case D3D12_AUTO_BREADCRUMB_OP_PRESENT: return "Present";
+            case D3D12_AUTO_BREADCRUMB_OP_RESOLVEQUERYDATA: return "ResolveQueryData";
+            case D3D12_AUTO_BREADCRUMB_OP_BEGINSUBMISSION: return "BeginSubmission";
+            case D3D12_AUTO_BREADCRUMB_OP_ENDSUBMISSION: return "EndSubmission";
+            case D3D12_AUTO_BREADCRUMB_OP_DECODEFRAME: return "DecodeFrame";
+            case D3D12_AUTO_BREADCRUMB_OP_PROCESSFRAMES: return "ProcessFrames";
+            case D3D12_AUTO_BREADCRUMB_OP_ATOMICCOPYBUFFERUINT: return "AtomicCopyBufferUint";
+            case D3D12_AUTO_BREADCRUMB_OP_ATOMICCOPYBUFFERUINT64: return "AtomicCopyBufferUint64";
+            case D3D12_AUTO_BREADCRUMB_OP_RESOLVESUBRESOURCEREGION: return "ResovleSubresourceRegion";
+            case D3D12_AUTO_BREADCRUMB_OP_WRITEBUFFERIMMEDIATE: return "WriteBufferImmediate";
+            case D3D12_AUTO_BREADCRUMB_OP_DECODEFRAME1: return "DecodeFrame1";
+            case D3D12_AUTO_BREADCRUMB_OP_SETPROTECTEDRESOURCESESSION: return "SetProtectedResourceSession";
+            case D3D12_AUTO_BREADCRUMB_OP_DECODEFRAME2: return "DecodeFrame2";
+            case D3D12_AUTO_BREADCRUMB_OP_PROCESSFRAMES1: return "ProcessFrames1";
+            case D3D12_AUTO_BREADCRUMB_OP_BUILDRAYTRACINGACCELERATIONSTRUCTURE: return "BuildRaytracingAccelerationStructure";
+            case D3D12_AUTO_BREADCRUMB_OP_EMITRAYTRACINGACCELERATIONSTRUCTUREPOSTBUILDINFO: return "EmitRaytracingAccelerationStructurePostBuildInfo";
+            case D3D12_AUTO_BREADCRUMB_OP_COPYRAYTRACINGACCELERATIONSTRUCTURE: return "CopyRaytracingAccelerationStructure";
+            case D3D12_AUTO_BREADCRUMB_OP_DISPATCHRAYS: return "DispatchRays";
+            case D3D12_AUTO_BREADCRUMB_OP_INITIALIZEMETACOMMAND: return "InitializeMetaCommand";
+            case D3D12_AUTO_BREADCRUMB_OP_EXECUTEMETACOMMAND: return "ExecuteMetaCommand";
+            case D3D12_AUTO_BREADCRUMB_OP_ESTIMATEMOTION: return "EstimateMotion";
+            case D3D12_AUTO_BREADCRUMB_OP_RESOLVEMOTIONVECTORHEAP: return "ResolveMotionVectorHeap";
+            case D3D12_AUTO_BREADCRUMB_OP_SETPIPELINESTATE1: return "SetPipelineState1";
+            case D3D12_AUTO_BREADCRUMB_OP_INITIALIZEEXTENSIONCOMMAND: return "InitializeExtensionCommand";
+            case D3D12_AUTO_BREADCRUMB_OP_EXECUTEEXTENSIONCOMMAND: return "ExecuteExtensionCommand";
+            case D3D12_AUTO_BREADCRUMB_OP_DISPATCHMESH: return "DispatchMesh";
+            case D3D12_AUTO_BREADCRUMB_OP_ENCODEFRAME: return "EncodeFrame";
+            case D3D12_AUTO_BREADCRUMB_OP_RESOLVEENCODEROUTPUTMETADATA: return "ResolveEncoderOutputMetadata";
+            case D3D12_AUTO_BREADCRUMB_OP_BARRIER: return "Barrier";
+            case D3D12_AUTO_BREADCRUMB_OP_BEGIN_COMMAND_LIST: return "BeginCommandList";
+            case D3D12_AUTO_BREADCRUMB_OP_DISPATCHGRAPH: return "DispatchGraph";
+            case D3D12_AUTO_BREADCRUMB_OP_SETPROGRAM: return "SetProgram";
+            case D3D12_AUTO_BREADCRUMB_OP_PROCESSFRAMES2: return "ProcessFrames2";
+            default: return "Unknown"; break;
+        }
+    }
+
+    static void DredGetDebugName( IUnknown* pObject, char* pBuffer, size_t bufferSize, char const* pFallbackName )
+    {
+        EE_ASSERT( pBuffer && bufferSize > 0 );
+        pBuffer[0] = 0;
+
+        if ( pObject )
+        {
+            ComPtr<ID3D12Object> d3d12Object;
+            if ( SUCCEEDED( pObject->QueryInterface( IID_PPV_ARGS( d3d12Object.ReleaseAndGetAddressOf() ) ) ) )
+            {
+                UINT nameSize = 0;
+                if ( SUCCEEDED( d3d12Object->GetPrivateData( WKPDID_D3DDebugObjectNameW, &nameSize, nullptr ) ) && nameSize > 0 )
+                {
+                    wchar_t nameW[Limits::MaxDebugNameLength] = {};
+                    if ( nameSize <= sizeof( nameW ) && SUCCEEDED( d3d12Object->GetPrivateData( WKPDID_D3DDebugObjectNameW, &nameSize, nameW ) ) && nameW[0] )
+                    {
+                        size_t nameLength = 0;
+                        if ( wcstombs_s( &nameLength, pBuffer, bufferSize, nameW, _TRUNCATE ) == 0 && nameLength > 0 )
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ( pFallbackName && pFallbackName[0] )
+        {
+            strcpy_s( pBuffer, bufferSize, pFallbackName );
+        }
+        else
+        {
+            strcpy_s( pBuffer, bufferSize, "<unnamed>" );
+        }
+    }
+
+    static bool HandleDeviceRemoval( Direct3D12Context* pD3D12Context, HRESULT triggerReason )
+    {
+        HRESULT removedReason = triggerReason;
+        if ( pD3D12Context->m_device )
+        {
+            HRESULT const deviceRemovedReason = pD3D12Context->m_device->GetDeviceRemovedReason();
+            if ( deviceRemovedReason != S_OK )
+            {
+                removedReason = deviceRemovedReason;
+            }
+        }
+
+        EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "Device removal detected! Trigger reason: 0x%08X, device removed reason: 0x%08X", (uint32_t) triggerReason, (uint32_t) removedReason );
+
+        ComPtr<ID3D12DeviceRemovedExtendedData> pDred;
+        if ( !pD3D12Context->m_device || FAILED( pD3D12Context->m_device->QueryInterface( IID_PPV_ARGS( pDred.ReleaseAndGetAddressOf() ) ) ) )
+        {
+            EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "Failed to query DRED extended data interface" );
+            return true;
+        }
+
+        //-------------------------------------------------------------------------
+
+        D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT breadcrumbsOutput = {};
+        if ( SUCCEEDED( pDred->GetAutoBreadcrumbsOutput( &breadcrumbsOutput ) ) )
+        {
+            D3D12_AUTO_BREADCRUMB_NODE const* pBreadcrumbNode = breadcrumbsOutput.pHeadAutoBreadcrumbNode;
+            uint32_t numNodes = 0;
+
+            while ( pBreadcrumbNode )
+            {
+                uint32_t const lastBreadcrumbValue = pBreadcrumbNode->pLastBreadcrumbValue ? *pBreadcrumbNode->pLastBreadcrumbValue : 0;
+
+                char commandListName[Limits::MaxDebugNameLength] = {};
+                char commandQueueName[Limits::MaxDebugNameLength] = {};
+
+                DredGetDebugName( pBreadcrumbNode->pCommandList, commandListName, sizeof( commandListName ), pBreadcrumbNode->pCommandListDebugNameA );
+                DredGetDebugName( pBreadcrumbNode->pCommandQueue, commandQueueName, sizeof( commandQueueName ), pBreadcrumbNode->pCommandQueueDebugNameA );
+
+                EE_LOG_ERROR
+                (
+                    LogCategory::Render, "RHI/D3D12", "Breadcrumb[%u]: Command List '%s' (0x%p), Queue '%s' (0x%p), num ops %u, last completed op %u",
+                    numNodes,
+                    commandListName,
+                    pBreadcrumbNode->pCommandList,
+                    commandQueueName,
+                    pBreadcrumbNode->pCommandQueue,
+                    pBreadcrumbNode->BreadcrumbCount,
+                    lastBreadcrumbValue
+                );
+
+                if ( pBreadcrumbNode->pCommandHistory && lastBreadcrumbValue > 0 && lastBreadcrumbValue <= pBreadcrumbNode->BreadcrumbCount )
+                {
+                    uint32_t const lastOpIndex = lastBreadcrumbValue - 1;
+                    EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "    Last completed op[%u]: %s (raw %u)", lastOpIndex, DredAutoBreadcrumbOpToString( uint32_t( pBreadcrumbNode->pCommandHistory[lastOpIndex] ) ), uint32_t( pBreadcrumbNode->pCommandHistory[lastOpIndex] ) );
+                }
+
+                if ( pBreadcrumbNode->pCommandHistory && lastBreadcrumbValue < pBreadcrumbNode->BreadcrumbCount )
+                {
+                    for ( uint32_t opIndex = lastBreadcrumbValue; opIndex < pBreadcrumbNode->BreadcrumbCount && opIndex < lastBreadcrumbValue + 16; ++opIndex )
+                    {
+                        EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "    Pending op[%u]: %s (raw %u)", opIndex, DredAutoBreadcrumbOpToString( uint32_t( pBreadcrumbNode->pCommandHistory[opIndex] ) ), uint32_t( pBreadcrumbNode->pCommandHistory[opIndex] ) );
+                    }
+                }
+
+                pBreadcrumbNode = pBreadcrumbNode->pNext;
+                ++numNodes;
+            }
+        }
+        else
+        {
+            EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "Failed to query DRED auto breadcrumbs" );
+        }
+
+        //-------------------------------------------------------------------------
+
+        D3D12_DRED_PAGE_FAULT_OUTPUT pageFaultOutput = {};
+        if ( SUCCEEDED( pDred->GetPageFaultAllocationOutput( &pageFaultOutput ) ) )
+        {
+            EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "Page fault VA: 0x%llX", (uint64_t) pageFaultOutput.PageFaultVA );
+
+            D3D12_DRED_ALLOCATION_NODE const* pAllocationNode = pageFaultOutput.pHeadExistingAllocationNode;
+            uint32_t numAllocations = 0;
+            while ( pAllocationNode && numAllocations < 32 )
+            {
+                EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "    Existing allocation[%u]: '%s' (type %s)", numAllocations, pAllocationNode->ObjectNameA ? pAllocationNode->ObjectNameA : "<unnamed>", DredAllocationTypeToString( pAllocationNode->AllocationType ) );
+                pAllocationNode = pAllocationNode->pNext;
+                ++numAllocations;
+            }
+
+            pAllocationNode = pageFaultOutput.pHeadRecentFreedAllocationNode;
+            numAllocations = 0;
+            while ( pAllocationNode && numAllocations < 32 )
+            {
+                EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "    Recently freed allocation[%u]: '%s' (type %s)", numAllocations, pAllocationNode->ObjectNameA ? pAllocationNode->ObjectNameA : "<unnamed>", DredAllocationTypeToString( pAllocationNode->AllocationType ) );
+                pAllocationNode = pAllocationNode->pNext;
+                ++numAllocations;
+            }
+        }
+        else
+        {
+            EE_LOG_ERROR( LogCategory::Render, "RHI/D3D12", "Failed to query DRED page fault data" );
+        }
+
+        return true;
+    }
+
     EE_BASE_API Context* CreateContext( ContextParameters const& parameters )
     {
         bool isWindowsVersionSupported = ValidateWindowsVersion();
@@ -1930,8 +2157,16 @@ namespace EE::Render::RHI
         {
             factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
 
-            // Not all GPUs support DRED, need to check device capabilities first.
-            // Actual DRED initialization is done after device is created and capabilities validated.
+            // DRED must be enabled before the device is created
+            if ( SUCCEEDED( D3D12GetDebugInterface( IID_PPV_ARGS( pD3D12Context->m_dredSettings.ReleaseAndGetAddressOf() ) ) ) )
+            {
+                // RenderDoc does not support DRED, disable it when detected
+                if ( !renderDocConnected )
+                {
+                    pD3D12Context->m_dredSettings->SetAutoBreadcrumbsEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
+                    pD3D12Context->m_dredSettings->SetPageFaultEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
+                }
+            }
         }
 
         HRESULT result = CreateDXGIFactory2( factoryFlags, IID_PPV_ARGS( pD3D12Context->m_factory.ReleaseAndGetAddressOf() ) );
@@ -2098,6 +2333,18 @@ namespace EE::Render::RHI
                             Memory::InitializeThreadHeap();
                         }
 
+                        // When the device gets removed (e.g. a TDR), dump DRED breadcrumbs and page fault data before anything else
+                        if ( id == D3D12_MESSAGE_ID_DEVICE_REMOVAL_PROCESS_AT_FAULT || id == D3D12_MESSAGE_ID_DEVICE_REMOVAL_PROCESS_POSSIBLY_AT_FAULT || id == D3D12_MESSAGE_ID_DEVICE_REMOVAL_PROCESS_NOT_AT_FAULT )
+                        {
+                            if ( pContext )
+                            {
+                                HandleDeviceRemoval( static_cast<Direct3D12Context*>( pContext ), S_OK );
+                            }
+
+                            EE_LOG_FATAL_ERROR( LogCategory::Render, "RHI/D3D12", pDescription );
+                            return;
+                        }
+
                         // Filter out some warnings that aren't useful
                         if ( id == D3D12_MESSAGE_ID_NON_OPTIMAL_BARRIER_ONLY_EXECUTE_COMMAND_LISTS )
                         {
@@ -2131,7 +2378,7 @@ namespace EE::Render::RHI
                     };
 
                     DWORD callbackCookie = 0;
-                    HRESULT hr = infoQueue1->RegisterMessageCallback( MessageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &callbackCookie );
+                    HRESULT hr = infoQueue1->RegisterMessageCallback( MessageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, pD3D12Context, &callbackCookie );
 
                     if ( callbackCookie == 0 )
                     {
@@ -2183,24 +2430,9 @@ namespace EE::Render::RHI
         pD3D12Context->m_deviceCapabilities.m_indirectRootConstant = true;
         pD3D12Context->m_deviceCapabilities.m_rasterizerOrderViews = featureData.ROVsSupported;
 
-        if ( SUCCEEDED( D3D12GetDebugInterface( IID_PPV_ARGS( pD3D12Context->m_dredSettings.ReleaseAndGetAddressOf() ) ) ) )
-        {
-            pD3D12Context->m_deviceCapabilities.m_breadcrumbs = true;
-        }
+        pD3D12Context->m_deviceCapabilities.m_breadcrumbs = pD3D12Context->m_dredSettings && parameters.m_enableDeviceBreadcrumbs && !renderDocConnected;
 
         pD3D12Context->m_deviceCapabilities.m_hdr = true;
-
-        if ( parameters.m_enableDeviceBreadcrumbs )
-        {
-            // RenderDoc does not support DRED, disable it when detected
-            if ( !renderDocConnected )
-            {
-                result = pD3D12Context->m_deviceCapabilities.m_breadcrumbs;
-
-                pD3D12Context->m_dredSettings->SetAutoBreadcrumbsEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
-                pD3D12Context->m_dredSettings->SetPageFaultEnablement( D3D12_DRED_ENABLEMENT_FORCED_ON );
-            }
-        }
 
         for ( uint32_t formatIndex = 0; formatIndex < NumDataFormats; ++formatIndex )
         {
@@ -2525,6 +2757,13 @@ namespace EE::Render::RHI
         }
     }
 
+    EE_BASE_API void SetCurrentFrameIndex( Context* pContext, uint32_t frameIndex )
+    {
+        Direct3D12Context* pD3D12Context = static_cast<Direct3D12Context*>( pContext );
+
+        pD3D12Context->m_resourceAllocator->SetCurrentFrameIndex( frameIndex );
+    }
+
     EE_BASE_API Queue* CreateQueue( Context* pContext, QueueParameters const& parameters )
     {
         Direct3D12Context* pD3D12Context = static_cast<Direct3D12Context*>( pContext );
@@ -2616,8 +2855,9 @@ namespace EE::Render::RHI
         }
     }
 
-    EE_BASE_API uint64_t QueueSubmit( Queue* pQueue, TArrayView<CommandBuffer*> commandBuffers )
+    EE_BASE_API uint64_t QueueSubmit( Context* pContext, Queue* pQueue, TArrayView<CommandBuffer*> commandBuffers )
     {
+        Direct3D12Context* pD3D12Context = static_cast<Direct3D12Context*>( pContext );
         Direct3D12Queue* pD3D12Queue = static_cast<Direct3D12Queue*>( pQueue );
 
         if ( !commandBuffers.empty() )
@@ -2637,19 +2877,28 @@ namespace EE::Render::RHI
         uint64_t signalSemaphore = pD3D12Queue->m_fenceValue++;
 
         HRESULT const result = pD3D12Queue->m_queue->Signal( pD3D12Queue->m_fence.Get(), signalSemaphore );
+        if ( FAILED( result ) )
+        {
+            HandleDeviceRemoval( pD3D12Context, result );
+        }
         EE_ASSERT( SUCCEEDED( result ) );
 
         return signalSemaphore;
     }
 
-    EE_BASE_API uint64_t QueuePresent( Queue* pQueue, Swapchain* pSwapchain, uint32_t imageIndex )
+    EE_BASE_API uint64_t QueuePresent( Context* pContext, Queue* pQueue, Swapchain* pSwapchain, uint32_t imageIndex )
     {
+        Direct3D12Context* pD3D12Context = static_cast<Direct3D12Context*>( pContext );
         Direct3D12Queue* pD3D12Queue = static_cast<Direct3D12Queue*>( pQueue );
         Direct3D12Swapchain* pD3D12Swapchain = static_cast<Direct3D12Swapchain*>( pSwapchain );
 
         EE_ASSERT( imageIndex == pD3D12Swapchain->m_swapchain->GetCurrentBackBufferIndex() );
 
         HRESULT result = pD3D12Swapchain->m_swapchain->Present( pD3D12Swapchain->m_syncInterval, pD3D12Swapchain->m_presentFlags );
+        if ( FAILED( result ) )
+        {
+            HandleDeviceRemoval( pD3D12Context, result );
+        }
         EE_ASSERT( SUCCEEDED( result ) );
 
         uint64_t signalSemaphore = pD3D12Queue->m_fenceValue;
@@ -4459,7 +4708,7 @@ namespace EE::Render::RHI
             }
             if ( parameters.m_descriptorTypes.IsFlagSet( DescriptorTypeFlags::RenderTarget ) )
             {
-                if ( parameters.m_format == DataFormat::D32_SFloat || parameters.m_format == DataFormat::D32_SFloat_S8_UInt || parameters.m_format == DataFormat::S8_Uint )
+                if ( parameters.m_format == DataFormat::D32_SFloat || parameters.m_format == DataFormat::D32_SFloat_S8_UInt || parameters.m_format == DataFormat::D16_UNorm || parameters.m_format == DataFormat::S8_Uint )
                 {
                     d3d12ResourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
                     d3d12ClearValue.DepthStencil.Depth = parameters.m_clearValue.m_depth;
@@ -4600,6 +4849,10 @@ namespace EE::Render::RHI
                 // Assume we want stencil only
                 dxgiShaderResourceFormat = DXGI_FORMAT_X24_TYPELESS_G8_UINT;
             }
+            else if ( dxgiShaderResourceFormat == DXGI_FORMAT_D16_UNORM )
+            {
+                dxgiShaderResourceFormat = DXGI_FORMAT_R16_UNORM;
+            }
 
             if ( parameters.m_descriptorTypes.AreAnyFlagsSet( DescriptorTypeFlags::Texture, DescriptorTypeFlags::TextureCube ) )
             {
@@ -4672,7 +4925,7 @@ namespace EE::Render::RHI
 
         if ( parameters.m_descriptorTypes.AreAnyFlagsSet( DescriptorTypeFlags::RenderTarget ) )
         {
-            if ( parameters.m_format == DataFormat::D32_SFloat || parameters.m_format == DataFormat::D32_SFloat_S8_UInt || parameters.m_format == DataFormat::S8_Uint )
+            if ( parameters.m_format == DataFormat::D32_SFloat || parameters.m_format == DataFormat::D32_SFloat_S8_UInt || parameters.m_format == DataFormat::D16_UNorm || parameters.m_format == DataFormat::S8_Uint )
             {
                 pD3D12Texture->m_pRenderTargetDescriptorAllocator = &pD3D12Context->m_hostDepthStencilDescriptorAllocator;
 
@@ -4752,7 +5005,7 @@ namespace EE::Render::RHI
 
             if ( pD3D12Texture->m_renderTargetDescriptorHandles.IsValid() )
             {
-                if ( pD3D12Texture->m_format == DataFormat::D32_SFloat || pD3D12Texture->m_format == DataFormat::D32_SFloat_S8_UInt || pD3D12Texture->m_format == DataFormat::S8_Uint )
+                if ( pD3D12Texture->m_format == DataFormat::D32_SFloat || pD3D12Texture->m_format == DataFormat::D32_SFloat_S8_UInt || pD3D12Texture->m_format == DataFormat::D16_UNorm || pD3D12Texture->m_format == DataFormat::S8_Uint )
                 {
                     pD3D12Context->m_hostDepthStencilDescriptorAllocator.FreeDescriptors( eastl::move( pD3D12Texture->m_renderTargetDescriptorHandles ) );
                 }
@@ -5001,7 +5254,8 @@ namespace EE::Render::RHI
             descriptorReflection.m_setIndex = int32_t( shaderResource.m_setIndex );
 
             D3D12_ROOT_PARAMETER1 d3d12RootParameter = {};
-            d3d12RootParameter.ShaderVisibility = D3D12ShaderVisibility( shaderResource.m_usedStages );
+            //d3d12RootParameter.ShaderVisibility = D3D12ShaderVisibility( shaderResource.m_usedStages );
+            d3d12RootParameter.ShaderVisibility = D3D12ShaderVisibility( shaderStages );
             d3d12RootParameter.Descriptor.ShaderRegister = shaderResource.m_registerIndex;
             d3d12RootParameter.Descriptor.RegisterSpace = shaderResource.m_setIndex;
 
@@ -5284,7 +5538,7 @@ namespace EE::Render::RHI
         d3d12PipelineStateDesc.RasterizerState.DepthBiasClamp = parameters.m_rasterizerState.m_depthBiasClamp;
         d3d12PipelineStateDesc.RasterizerState.DepthClipEnable = parameters.m_rasterizerState.m_depthClip;
         d3d12PipelineStateDesc.RasterizerState.FillMode = D3D12FillMode( parameters.m_rasterizerState.m_fillMode );
-        d3d12PipelineStateDesc.RasterizerState.FrontCounterClockwise = parameters.m_rasterizerState.m_frontFace == FrontFace::ClockWise;
+        d3d12PipelineStateDesc.RasterizerState.FrontCounterClockwise = parameters.m_rasterizerState.m_frontFace == FrontFace::CounterClockWise;
         d3d12PipelineStateDesc.RasterizerState.MultisampleEnable = parameters.m_rasterizerState.m_multisample;
         d3d12PipelineStateDesc.RasterizerState.SlopeScaledDepthBias = parameters.m_rasterizerState.m_slopeScaledDepthBias;
 
@@ -5404,7 +5658,7 @@ namespace EE::Render::RHI
         d3d12RasterizerStateDesc.DepthBiasClamp = parameters.m_rasterizerState.m_depthBiasClamp;
         d3d12RasterizerStateDesc.DepthClipEnable = parameters.m_rasterizerState.m_depthClip;
         d3d12RasterizerStateDesc.FillMode = D3D12FillMode( parameters.m_rasterizerState.m_fillMode );
-        d3d12RasterizerStateDesc.FrontCounterClockwise = parameters.m_rasterizerState.m_frontFace == FrontFace::ClockWise;
+        d3d12RasterizerStateDesc.FrontCounterClockwise = parameters.m_rasterizerState.m_frontFace == FrontFace::CounterClockWise;
         d3d12RasterizerStateDesc.MultisampleEnable = parameters.m_rasterizerState.m_multisample;
         d3d12RasterizerStateDesc.SlopeScaledDepthBias = parameters.m_rasterizerState.m_slopeScaledDepthBias;
 

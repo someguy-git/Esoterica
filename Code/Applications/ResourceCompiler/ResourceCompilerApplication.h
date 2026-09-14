@@ -73,7 +73,7 @@ namespace EE::Resource
         // Standalone compilation
         bool                                            m_isStandaloneCompile = false;
         ResourceID                                      m_resourceToCompile;
-        bool                                            m_isForPackagedBuild = false;
+        bool                                            m_isForShippingBuild = false;
         bool                                            m_forceCompilation = false;
 
         // Worker mode

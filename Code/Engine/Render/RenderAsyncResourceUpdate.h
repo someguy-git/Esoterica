@@ -11,12 +11,6 @@
 
 namespace EE::Render
 {
-    namespace ShaderTypes
-    {
-        struct Mesh;
-        struct MeshCluster;
-    }
-
     enum class AsyncResourceUpdateState
     {
         AllocatePending,
@@ -29,17 +23,7 @@ namespace EE::Render
 
     using Buffer32ByteBlock = uint32_t[8];
 
-    using MeshHandle = PageAllocator<ShaderTypes::Mesh, uint16_t>::Handle;
-    using ClustersHandle = PageAllocator<ShaderTypes::MeshCluster, uint32_t>::Handle;
     using ShaderDataHandle = PageAllocator<Buffer32ByteBlock, uint32_t>::Handle;
-
-    struct MeshUpdate
-    {
-        MeshHandle                              m_meshHandle = {};
-        ClustersHandle                          m_clustersHandle = {};
-        TArrayView<ShaderTypes::Mesh>           m_deviceMeshes = {};
-        TArrayView<ShaderTypes::MeshCluster>    m_deviceClusters = {};
-    };
 
     // Async buffer update, everything in this struct is owned externally
     struct AsyncBufferUpdate
@@ -89,16 +73,5 @@ namespace EE::Render
         size_t                                  m_shaderIndex = 0;
 
         MaterialShaderParametersInstance        m_materialShaderParameters = {};
-    };
-
-    // Async mesh update, everything in this struct is owned externally
-    struct AsyncMeshUpdate
-    {
-        eastl::atomic<AsyncResourceUpdateState> m_updateState = AsyncResourceUpdateState::AllocatePending;
-
-        size_t                                  m_numMeshes = 0;
-        size_t                                  m_numClustersForAllMeshes = 0;
-
-        MeshUpdate                              m_meshUpdate = {};
     };
 }

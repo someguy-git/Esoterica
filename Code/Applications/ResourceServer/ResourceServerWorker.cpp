@@ -338,7 +338,7 @@ namespace EE::Resource
             {
                 NetworkResourceCompilerRequest::Request& networkRequest = requestData.m_requests.emplace_back();
                 networkRequest.m_resourceID = pTask->m_resourceID;
-                networkRequest.m_isForPackagedBuild = pTask->m_isPackagingRequest;
+                networkRequest.m_isForShippingBuild = pTask->m_isPackagingRequest;
                 networkRequest.m_forceCompilation = pTask->m_isForcedCompilation;
                 networkRequest.m_taskID = pTask->m_ID;
 
@@ -377,7 +377,7 @@ namespace EE::Resource
                 {
                     NetworkResourceCompilerRequest::Request& networkRequest = requestData.m_requests.emplace_back();
                     networkRequest.m_resourceID = pTask->m_resourceID;
-                    networkRequest.m_isForPackagedBuild = pTask->m_isPackagingRequest;
+                    networkRequest.m_isForShippingBuild = pTask->m_isPackagingRequest;
                     networkRequest.m_forceCompilation = false;
                     networkRequest.m_taskID = pTask->m_ID;
 

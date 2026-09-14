@@ -414,3 +414,16 @@ float4 PS_main( bool isFrontFace : SV_IsFrontFace, VertexOutput vertex, Primitiv
     return result;
     #endif
 }
+
+#if EE_DEVELOPMENT_TOOLS
+[RootSignature( DrawRootSignature )]
+uint PS_main_OutlineID( bool isFrontFace : SV_IsFrontFace, VertexOutput vertex, PrimitiveOutput primitive ) : SV_Target
+{
+    // MaterialShaderInput  materialInput  = MaterialShaderInput::New( vertex, primitive, RootCBV.m_cameraPosition.xyz );
+    // MaterialShaderOutput materialOutput = MaterialShaderMain( materialInput );
+    // clip( materialOutput.m_opacity - 0.1 );
+
+    StructuredBuffer<MeshInstance> meshInstanceBuffer = GetBuffer( RootConstants.m_instanceBuffer );
+    return meshInstanceBuffer[primitive.GetInstanceIndex()].m_meshInstanceRootIndex;
+}
+#endif

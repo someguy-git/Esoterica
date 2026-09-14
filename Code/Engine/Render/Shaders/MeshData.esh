@@ -3,11 +3,13 @@
 #define _MESH_DATA_ESH_
 
 #include "Base/Render/RHI.esh"
+#include "Engine/Render/Shaders/CommonPacking.esh"
 
 #ifndef __cplusplus
     // These defines have to match the corresponding MeshData.h constants!
     #define MAX_CLUSTER_VERTICES 64
     #define MAX_CLUSTER_TRIANGLES 64
+    #define TRIANGLE_INDEX_BITS 6
 
     // Dispatch count is set to max cluster vertices to achieve optimal CU utilization.
     // Triangle indices are filled with an unrolled loop while each vertex is shaded exactly once by one thread in the group.
@@ -16,83 +18,146 @@
 
 EE_BEGIN_SHADER_TYPES_NAMESPACE
 
-    struct HLSL_ALIGN_STRUCT StaticMeshVertex
-    {
-        uint16_t3                       m_compressedPosition;
-        int16_t3                        m_compressedNormal;
-        float2                          m_uv0;
-        float2                          m_uv1;
-        uint                            m_packedColor;
-
-        #ifndef __cplusplus
-        float3 GetPosition( int3 anchor, int exponent )
-        {
-            int3 decompressedPosition = anchor + int3( m_compressedPosition );
-            return ldexp( decompressedPosition, exponent );
-        }
-
-        float3 GetNormal()
-        {
-            return max( float3( m_compressedNormal ) * ( 1.0 / 32767.0 ), -1.0 );
-        }
-        #endif
-    };
-
-    HLSL_STATIC_ASSERT( sizeof(StaticMeshVertex ) == 32, "Expected to be exactly 32 bytes" );
-
     struct HLSL_ALIGN_STRUCT SkinningAttribute
     {
         int4                            m_boneIndices;
         float4                          m_boneWeights;
     };
 
-    struct HLSL_ALIGN_STRUCT MeshCluster
+    HLSL_STATIC_ASSERT( sizeof( SkinningAttribute ) == 32, "Expected to be exactly 32 bytes" );
+
+    typedef int16_t3 VertexNormalAttribute;
+    HLSL_STATIC_ASSERT( sizeof( VertexNormalAttribute ) == 6, "Expected to be exactly 6 bytes" );
+
+    typedef float2 TextureCoordinateAttribute;
+    HLSL_STATIC_ASSERT( sizeof( TextureCoordinateAttribute ) == 8, "Expected to be exactly 8 bytes" );
+
+    typedef uint32_t VertexColorAttribute;
+    HLSL_STATIC_ASSERT( sizeof( VertexColorAttribute ) == 4, "Expected to be exactly 4 bytes" );
+
+    struct MeshCluster
     {
-        uint16_t3                       m_boundingSphereCenter;
-        uint16_t                        m_padding;
-        uint32_t                        m_vertexOffset;
-        uint32_t                        m_triangleOffset;
         int32_t                         m_anchorX : 24;
-        uint32_t                        m_numVertices : 8;          // only 6 bits needed
+        uint32_t                        m_numVertices : 6;                      // Stored as ( count - 1 ), max 64 vertices per cluster, hard limit
+        uint32_t                        m_numSkinningAttributes : 2;
+
         int32_t                         m_anchorY : 24;
-        uint32_t                        m_numTriangles : 8;         // only 7 bits needed
+        uint32_t                        m_numTriangles : 6;                     // Stored as ( count - 1 ), max 64 triangles per cluster, hard limit
+        uint32_t                        m_numTextureCoordinateAttributes : 2;
+
         int32_t                         m_anchorZ : 24;
         int32_t                         m_sharedExponent : 8;
-        float                           m_boundingSphereRadius;     // TODO: a whole float is kinda wasteful, can compress this to get more bits for other stuff. Not needed right now.
+
+        uint32_t                        m_numColorAttributes : 2;
+        uint32_t                        m_numPositionBitsX : 4;                 // Bits used to store ( position - anchor ) per axis, stored as ( numBits - 1 ), max 16 per axis
+        uint32_t                        m_numPositionBitsY : 4;
+        uint32_t                        m_numPositionBitsZ : 4;
+        uint32_t                        m_reserved : 18;
+
+        uint16_t                        m_aabb[6];                              // Anchor-relative AABB min/max offsets
+
+        uint32_t                        m_dataOffsetIn8ByteBlocks;              // Buffer-relative offset to cluster vertex data
 
         #ifndef __cplusplus
         int3 GetAnchor() { return int3( m_anchorX, m_anchorY, m_anchorZ ); }
 
-        float4 GetBoundingSphere()
+        uint GetDataOffsetInBytes()
         {
-            int3 decompressedPosition = GetAnchor() + int3( m_boundingSphereCenter );
-            return float4( ldexp( float3( decompressedPosition ), m_sharedExponent ), m_boundingSphereRadius );
+            return m_dataOffsetIn8ByteBlocks * 8;
+        }
+
+        uint GetNumPositionBitsX()
+        {
+            return m_numPositionBitsX + 1;
+        }
+
+        uint GetNumPositionBitsY()
+        {
+            return m_numPositionBitsY + 1;
+        }
+
+        uint GetNumPositionBitsZ()
+        {
+            return m_numPositionBitsZ + 1;
+        }
+
+        uint GetPositionBitsPerVertex()
+        {
+            return GetNumPositionBitsX() + GetNumPositionBitsY() + GetNumPositionBitsZ();
+        }
+
+        uint GetPositionBitsSize()
+        {
+            uint const numBits = ( m_numVertices + 1 ) * GetPositionBitsPerVertex();
+            return ( ( numBits + 31 ) & ~31U ) / 8;
+        }
+
+        uint GetNormalsOffset()
+        {
+            return GetPositionBitsSize();
+        }
+
+        uint GetUVsOffset()
+        {
+            return GetNormalsOffset() + ( ( ( m_numVertices + 1 ) * sizeof( VertexNormalAttribute ) + 3 ) & ~3U );
+        }
+
+        uint GetColorsOffset()
+        {
+            return GetUVsOffset() + m_numTextureCoordinateAttributes * ( m_numVertices + 1 ) * sizeof( TextureCoordinateAttribute );
+        }
+
+        uint GetSkinningOffset()
+        {
+            return GetColorsOffset() + m_numColorAttributes * ( m_numVertices + 1 ) * sizeof( VertexColorAttribute );
+        }
+
+        uint GetTrianglesOffset()
+        {
+            return GetSkinningOffset() + m_numSkinningAttributes * ( m_numVertices + 1 ) * sizeof( SkinningAttribute );
+        }
+
+        uint GetVertexNormalOffset( uint vertexIndex )
+        {
+            return GetNormalsOffset() + vertexIndex * sizeof( VertexNormalAttribute );
+        }
+
+        uint GetVertexUVOffset( uint attributeIndex, uint vertexIndex )
+        {
+            return GetUVsOffset() + attributeIndex * ( m_numVertices + 1 ) * sizeof( TextureCoordinateAttribute ) + vertexIndex * sizeof( TextureCoordinateAttribute );
+        }
+
+        uint GetVertexColorOffset( uint attributeIndex, uint vertexIndex )
+        {
+            return GetColorsOffset() + attributeIndex * ( m_numVertices + 1 ) * sizeof( VertexColorAttribute ) + vertexIndex * sizeof( VertexColorAttribute );
+        }
+
+        uint GetSkinningAttributeOffset( uint attributeIndex, uint vertexIndex )
+        {
+            return GetSkinningOffset() + attributeIndex * ( m_numVertices + 1 ) * sizeof( SkinningAttribute ) + vertexIndex * sizeof( SkinningAttribute );
+        }
+
+        void GetAABB( out float3 aabbMin, out float3 aabbMax )
+        {
+            int3 const anchor = GetAnchor();
+            aabbMin = ldexp( float3( anchor ) + float3( m_aabb[0], m_aabb[1], m_aabb[2] ), m_sharedExponent );
+            aabbMax = ldexp( float3( anchor ) + float3( m_aabb[3], m_aabb[4], m_aabb[5] ), m_sharedExponent );
         }
         #endif
     };
 
-    HLSL_STATIC_ASSERT( sizeof( MeshCluster ) == 32, "Don't exceed 32 bytes for this structure, it is performance critical" );
+    HLSL_STATIC_ASSERT( sizeof( MeshCluster ) == 32, "Mesh cluster must be exactly 32 bytes" );
 
-    struct HLSL_ALIGN_STRUCT Mesh
+    struct HLSL_ALIGN_STRUCT MeshHeader
     {
         float3                          m_aabbCenterLocal;
         float3                          m_aabbHalfExtentsLocal;
-    
-        uint                            m_numSkinningAttributes : 8;
-        uint                            m_vertexStride          : 8;             // TODO: Max vertex stride is 256 bytes, put an assert somewhere about it
-        uint                            m_padding               : 16;
 
-        uint                            m_numBones;
-    
-        uint                            m_clusterOffset;
+        uint                            m_reserved;
         uint                            m_numClusters;
-    
-        uint4                           m_padding0;
-        uint                            m_padding1;
-    
-        BufferHandle                    m_clusterVertexBuffer;
-        BufferHandle                    m_clusterTriangleBuffer;
     };
+
+    HLSL_STATIC_ASSERT( sizeof( MeshHeader ) == 32, "Mesh header must be exactly 32 bytes" );
 
 EE_END_SHADER_TYPES_NAMESPACE
 
@@ -108,7 +173,7 @@ EE_END_SHADER_TYPES_NAMESPACE
         {
             // "Triangle Scan Conversion using 2D Homogeneus Coordinates" by Marc Olano, Trey Greer
             precise float backfaceDeterminant = determinant( float3x3( clipVertices[0].xyw, clipVertices[1].xyw, clipVertices[2].xyw ) );
-            if ( backfaceDeterminant >= 0 )
+            if ( backfaceDeterminant <= 0 )
             {
                 return true;
             }
@@ -179,6 +244,74 @@ EE_END_SHADER_TYPES_NAMESPACE
         }
 
         return false;
+    }
+
+    // Packed mesh buffer layout:
+    //
+    //     [ MeshHeader ][ MeshCluster 0 ][ MeshCluster 1 ] ... [ MeshCluster N-1 ]
+    //     [ cluster 0 data ][ cluster 1 data ] ...
+    //
+    // Clusters are strictly sequential and directly addressable:
+    //
+    //     clusterAddress = sizeof( MeshHeader ) + clusterIndex * sizeof( MeshCluster )
+    //
+    // Each cluster stores m_dataOffsetIn8ByteBlocks pointing to its data.
+    //
+    //     [ position bits: numVertices * ( bitsX + bitsY + bitsZ ), padded to 4 B ]
+    //     [ normals: numVertices * sizeof( VertexNormalAttribute ), padded to 4 B ]
+    //     [ uv0/uv1: numVertices * sizeof( TextureCoordinateAttribute ) ]
+    //     [ color0: numVertices * sizeof( VertexColorAttribute ) ]
+    //     [ skinning: numSkinning * numVertices * sizeof( SkinningAttribute ) ]
+    //     [ triangle bits: numTriangles * 3 * TRIANGLE_INDEX_BITS, padded for the last 64-bit window ]
+
+    uint GetMeshClusterAddress( uint clusterIndex )
+    {
+        return sizeof( MeshHeader ) + clusterIndex * sizeof( MeshCluster );
+    }
+
+    uint LoadMeshBufferBits( ByteAddressBuffer meshBuffer, uint bitOffset, uint numBits )
+    {
+        uint const byteAddress = ( bitOffset / 32 ) * sizeof( uint );
+        uint const shift = bitOffset & 31;
+
+        uint bits = meshBuffer.Load( byteAddress ) >> shift;
+        if ( shift + numBits > 32 )
+        {
+            bits |= meshBuffer.Load( byteAddress + sizeof( uint ) ) << ( 32 - shift );
+        }
+
+        return bits & ( ( 1U << numBits ) - 1U );
+    }
+
+    float3 LoadClusterVertexPosition( ByteAddressBuffer meshBuffer, MeshCluster cluster, uint vertexIndex )
+    {
+        uint const bitsX = cluster.GetNumPositionBitsX();
+        uint const bitsY = cluster.GetNumPositionBitsY();
+        uint const bitsZ = cluster.GetNumPositionBitsZ();
+
+        uint const bitOffset = vertexIndex * ( bitsX + bitsY + bitsZ ) + cluster.GetDataOffsetInBytes() * 8;
+
+        uint3 compressedPosition;
+        compressedPosition.x = LoadMeshBufferBits( meshBuffer, bitOffset, bitsX );
+        compressedPosition.y = LoadMeshBufferBits( meshBuffer, bitOffset + bitsX, bitsY );
+        compressedPosition.z = LoadMeshBufferBits( meshBuffer, bitOffset + bitsX + bitsY, bitsZ );
+
+        int3 decompressedPosition = cluster.GetAnchor() + int3( compressedPosition );
+        return ldexp( decompressedPosition, cluster.m_sharedExponent );
+    }
+
+    float3 LoadClusterVertexNormal( ByteAddressBuffer meshBuffer, uint normalAddress )
+    {
+        VertexNormalAttribute const packedNormal = meshBuffer.Load<VertexNormalAttribute>( normalAddress );
+        return max( float3( packedNormal ) * ( 1.0 / 32767.0 ), -1.0 );
+    }
+
+    uint3 LoadMeshClusterTriangle( ByteAddressBuffer meshBuffer, MeshCluster cluster, uint triangleIndex )
+    {
+        uint const bitOffset = triangleIndex * 3 * TRIANGLE_INDEX_BITS + ( cluster.GetDataOffsetInBytes() + cluster.GetTrianglesOffset() ) * 8;
+        uint const indices = LoadMeshBufferBits( meshBuffer, bitOffset, 3 * TRIANGLE_INDEX_BITS );
+
+        return uint3( indices & 0x3F, ( indices >> 6 ) & 0x3F, ( indices >> 12 ) & 0x3F );
     }
 #endif
 

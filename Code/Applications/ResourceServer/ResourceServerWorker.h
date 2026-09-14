@@ -2,7 +2,7 @@
 #include "ResourceServerRequest.h"
 #include "EngineTools/ThirdParty/subprocess/subprocess.h"
 #include "EngineTools/Resource/ResourceCompilerNetworkMessages.h"
-#include "Base/Resource/ResourceProviders/ResourceNetworkMessages.h"
+#include "Base/Resource/ResourceNetworkMessages.h"
 #include "Base/Time/Time.h"
 #include "Base/Time/Timers.h"
 #include "Base/Types/UUID.h"

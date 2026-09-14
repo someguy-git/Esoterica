@@ -20,7 +20,6 @@ namespace EE::Animation
 
         // Transfer the dependency buffer
         PoseBuffer const* pPoseBuffer = TransferDependencyPoseBuffer( context, 0 );
-        EE_ASSERT( pPoseBuffer->IsPoseSet() );
 
         // Get a cached buffer so we can copy the current pose
         PoseBuffer* pCachedPoseBuffer = nullptr;
@@ -36,7 +35,6 @@ namespace EE::Animation
         // Make a copy of the transferred buffer
         EE_ASSERT( pCachedPoseBuffer != nullptr );
         pCachedPoseBuffer->CopyFrom( pPoseBuffer );
-        EE_ASSERT( pCachedPoseBuffer->IsPoseSet() );
 
         MarkTaskComplete( context );
     }

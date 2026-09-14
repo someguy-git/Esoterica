@@ -37,7 +37,7 @@ namespace EE
         inline TypeSystem::TypeRegistry* GetTypeRegistry() { return &m_typeRegistry; }
         inline Input::InputSystem* GetInputSystem() { return &m_inputSystem; }
         inline Resource::ResourceSystem* GetResourceSystem() { return &m_resourceSystem; }
-        inline Resource::ResourceProvider* GetResourceProvider() { return m_pResourceProvider; }
+        inline Resource::IResourceProvider* GetResourceProvider() { return m_pResourceProvider; }
         inline SettingsRegistry* GetSettingsRegistry() { return &m_settingsRegistry; }
 
         #if EE_DEVELOPMENT_TOOLS
@@ -52,7 +52,7 @@ namespace EE
         SettingsRegistry                 m_settingsRegistry;
         Input::InputSystem               m_inputSystem;
         Resource::ResourceSystem         m_resourceSystem;
-        Resource::ResourceProvider*      m_pResourceProvider = nullptr;
+        Resource::IResourceProvider*     m_pResourceProvider = nullptr;
 
         #if EE_DEVELOPMENT_TOOLS
         ImGuiX::ImguiSystem              m_imguiSystem;

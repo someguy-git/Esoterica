@@ -546,6 +546,31 @@ namespace EE::Reflection
 
                 //-------------------------------------------------------------------------
 
+                else if ( parameterName == "UseOutlineIDPixelShader" )
+                {
+                    if ( parameterType != "bool" )
+                    {
+                        PrintError( "Failed to parse shader parameters in \"%s\" shader, \"UseOutlineIDPixelShader\" is expected to be of type \"bool\"", shader.m_name.c_str() );
+                        return false;
+                    }
+
+                    if ( parameterValue == "true" )
+                    {
+                        shader.m_useOutlineIDPixelShader = true;
+                    }
+                    else if ( parameterValue == "false" )
+                    {
+                        shader.m_useOutlineIDPixelShader = false;
+                    }
+                    else
+                    {
+                        PrintError( "Failed to parse shader parameters in \"%s\" shader, invalid parameter value \"%.*s\"", shader.m_name.c_str(), int( parameterValue.size() ), parameterValue.data() );
+                        return false;
+                    }
+                }
+
+                //-------------------------------------------------------------------------
+
                 else
                 {
                     PrintError( "Failed to parse shader parameters in \"%s\" shader, invalid parameter \"%.*s\"", shader.m_name.c_str(), int( parameterName.size() ), parameterName.data() );

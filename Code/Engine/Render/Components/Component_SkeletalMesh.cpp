@@ -39,13 +39,7 @@ namespace EE::Render
 
     void SkeletalMeshComponent::OnWorldTransformUpdated()
     {
-        if ( !m_meshInstanceProxy.IsValid() )
-        {
-            return;
-        }
-
-        AABB const worldAABB = GetWorldBounds().GetAABB();
-        m_meshInstanceRootProxy.WriteRootTransform( GetWorldTransform(), GetWorldNonUniformScale(), worldAABB.m_center.ToFloat3(), worldAABB.m_halfExtents.ToFloat3() );
+        WriteMeshInstanceRootTransform();
     }
 
     void SkeletalMeshComponent::OnRenderInstanceDataUpdated()
@@ -225,25 +219,6 @@ namespace EE::Render
     }
 
     //-------------------------------------------------------------------------
-
-    void SkeletalMeshComponent::QueueInitializeMeshInstance( DeviceRenderWorld* pDeviceRenderWorld )
-    {
-        EE_ASSERT( m_meshInstanceRootProxy.IsValid() );
-        EE_ASSERT( m_meshInstanceProxy.IsValid() );
-        EE_ASSERT( m_skinningProxy.IsValid() );
-
-        pDeviceRenderWorld->QueueMeshInstanceInitialize
-        (
-            uint32_t( m_meshInstanceProxy.m_instanceHandle.m_offset ),
-            uint32_t( m_meshInstanceRootProxy.m_instanceHandle.m_offset ),
-            GetMesh(),
-            GetResolvedMaterials()
-        );
-
-        AABB const worldAABB = GetWorldBounds().GetAABB();
-        m_meshInstanceRootProxy.WriteRootTransform( GetWorldTransform(), GetWorldNonUniformScale(), worldAABB.m_center.ToFloat3(), worldAABB.m_halfExtents.ToFloat3() );
-        m_meshInstanceProxy.WriteLocalTransforms( GetMesh()->GetSubmeshLocalTransforms() );
-    }
 
     void SkeletalMeshComponent::UpdateSkinningProxy()
     {

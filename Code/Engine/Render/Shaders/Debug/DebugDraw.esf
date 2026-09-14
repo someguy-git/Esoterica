@@ -5,9 +5,10 @@
 #include "Engine/Render/Shaders/CommonSamplers.esh"
 
 #ifndef __cplusplus
-ESF_PARAMETER string ShaderType           = "Surface";
-ESF_PARAMETER bool   ShowInResourceEditor = false;
-ESF_PARAMETER bool   UseMeshShader        = true;
+ESF_PARAMETER string ShaderType                 = "Surface";
+ESF_PARAMETER bool   UseMeshShader              = true;
+ESF_PARAMETER bool   ShowInResourceEditor       = false;
+ESF_PARAMETER bool   UseOutlineIDPixelShader    = true;
 
 ESF_RESOURCE_TABLE struct DebugDrawResourceTable 
 {
@@ -60,6 +61,7 @@ struct DebugDrawPrimitiveOutput
     TextureHandle   m_textureHandle                     : TEXCOORD3;
     bool            m_lineAA                            : TEXCOORD4;
     bool            m_pointAA                           : TEXCOORD5;
+    uint            m_objectID                          : TEXCOORD6;
 };
 
 [RootSignature( DebugDrawRootSignature )]
@@ -89,6 +91,7 @@ void MS_main(
     uint    commandAddress = ( dispatchThreadID + resourceTable.m_commandsOffset ) * sizeof( DebugDrawCommand_Raw );
     uint    basePrimitiveIndex = groupThreadID * 2;
     uint    baseVertexIndex = groupThreadID * 4;
+    uint    objectID = RootCBV.m_objectIDOffset + dispatchThreadID + resourceTable.m_commandsOffset;
 
     if ( dispatchThreadID < RootConstants.m_numDebugDrawCommands )
     {
@@ -126,6 +129,7 @@ void MS_main(
             primitiveOutput.m_cullPrimitive = false;
             primitiveOutput.m_textureHandle = ~0;
             primitiveOutput.m_pointAA = true;
+            primitiveOutput.m_objectID = objectID;
 
             DebugDrawVertexOutput vertexOutput = ( DebugDrawVertexOutput )0;
             vertexOutput.m_color = UnpackColor( pointCommand.m_packedColor );
@@ -231,6 +235,7 @@ void MS_main(
             DebugDrawPrimitiveOutput primitiveOutput = ( DebugDrawPrimitiveOutput )0;
             primitiveOutput.m_cullPrimitive = false;
             primitiveOutput.m_lineAA = !disableLineAA;
+            primitiveOutput.m_objectID = objectID;
             primitiveOutput.m_textureHandle = ~0;
 
             DebugDrawVertexOutput vertexOutput = ( DebugDrawVertexOutput )0;
@@ -299,6 +304,7 @@ void MS_main(
            
             DebugDrawPrimitiveOutput primitiveOutput = ( DebugDrawPrimitiveOutput )0;
             primitiveOutput.m_cullPrimitive = false;
+            primitiveOutput.m_objectID = objectID;
             primitiveOutput.m_textureHandle = ~0;
 
             DebugDrawVertexOutput vertexOutput = ( DebugDrawVertexOutput )0;
@@ -535,4 +541,12 @@ float4 PS_main( DebugDrawVertexOutput vertexInput, DebugDrawPrimitiveOutput prim
 
     return color;
 }
+
+#if EE_DEVELOPMENT_TOOLS
+[RootSignature( DebugDrawRootSignature )]
+uint PS_main_OutlineID( DebugDrawVertexOutput vertexInput, DebugDrawPrimitiveOutput primitiveInput ) : SV_TARGET
+{
+    return primitiveInput.m_objectID;
+}
+#endif
 #endif

@@ -112,6 +112,8 @@ namespace EE::Animation
         // Blend
         //-------------------------------------------------------------------------
 
+        bool const isAdditiveBlend = pSourceBuffer->GetPrimaryPose()->IsAdditivePose() || pTargetBuffer->GetPrimaryPose()->IsAdditivePose();
+
         int32_t const numPoses = (int32_t) pSourceBuffer->m_poses.size();
         for ( int32_t poseIdx = 0; poseIdx < numPoses; poseIdx++ )
         {
@@ -128,12 +130,12 @@ namespace EE::Animation
             {
                 if ( !hasSourcePose )
                 {
-                    pSourceBuffer->m_poses[poseIdx].Reset( pSourceBuffer->IsAdditivePose() ? Pose::Init::ZeroPose : Pose::Init::ReferencePose );
+                    pSourceBuffer->m_poses[poseIdx].Reset( isAdditiveBlend ? Pose::Init::ZeroPose : Pose::Init::ReferencePose );
                 }
 
                 if ( !hasTargetPose )
                 {
-                    pTargetBuffer->m_poses[poseIdx].Reset( pTargetBuffer->IsAdditivePose() ? Pose::Init::ZeroPose : Pose::Init::ReferencePose );
+                    pTargetBuffer->m_poses[poseIdx].Reset( isAdditiveBlend ? Pose::Init::ZeroPose : Pose::Init::ReferencePose );
                 }
 
                 Blender::ParentSpaceBlend( context.m_skeletonLOD, &pSourceBuffer->m_poses[poseIdx], &pTargetBuffer->m_poses[poseIdx], m_blendWeight, pBoneMask, &pFinalBuffer->m_poses[poseIdx] );
@@ -245,6 +247,8 @@ namespace EE::Animation
         // Overlay Blend
         //-------------------------------------------------------------------------
 
+        bool const isAdditiveBlend = pSourceBuffer->GetPrimaryPose()->IsAdditivePose() || pTargetBuffer->GetPrimaryPose()->IsAdditivePose();
+
         // Since this is an overlay blend - if a secondary pose is not set in the overlay, then we ignore the blend
         int32_t const numPoses = (int32_t) pSourceBuffer->m_poses.size();
         for ( int32_t poseIdx = 0; poseIdx < numPoses; poseIdx++ )
@@ -262,7 +266,7 @@ namespace EE::Animation
             bool const hasSourcePose = pSourceBuffer->m_poses[poseIdx].IsPoseSet();
             if ( !hasSourcePose )
             {
-                if ( pSourceBuffer->GetPrimaryPose()->IsAdditivePose() )
+                if ( isAdditiveBlend )
                 {
                     pSourceBuffer->m_poses[poseIdx].Reset( Pose::Init::ZeroPose );
                 }
@@ -382,6 +386,8 @@ namespace EE::Animation
         // Additive Blend
         //-------------------------------------------------------------------------
 
+        bool const isSourceAdditive = pSourceBuffer->IsAdditivePose();
+
         int32_t const numPoses = (int32_t) pSourceBuffer->m_poses.size();
         for ( int32_t poseIdx = 0; poseIdx < numPoses; poseIdx++ )
         {
@@ -402,9 +408,16 @@ namespace EE::Animation
             {
                 Blender::AdditiveBlend( context.m_skeletonLOD, &pSourceBuffer->m_poses[poseIdx], &pTargetBuffer->m_poses[poseIdx], m_blendWeight, pBoneMask, &pFinalBuffer->m_poses[poseIdx] );
             }
-            else // Apply the additive to the reference pose
+            else // Source pose is unset
             {
-                Blender::ApplyAdditiveToReferencePose( context.m_skeletonLOD, &pTargetBuffer->m_poses[poseIdx], m_blendWeight, pBoneMask, &pFinalBuffer->m_poses[poseIdx] );
+                if ( isSourceAdditive )
+                {
+                    pFinalBuffer->m_poses[poseIdx].CopyFrom( pTargetBuffer->m_poses[poseIdx] );
+                }
+                else // Apply the additive to the reference pose
+                {
+                    Blender::ApplyAdditiveToReferencePose( context.m_skeletonLOD, &pTargetBuffer->m_poses[poseIdx], m_blendWeight, pBoneMask, &pFinalBuffer->m_poses[poseIdx] );
+                }
             }
 
             #if EE_DEVELOPMENT_TOOLS

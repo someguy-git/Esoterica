@@ -99,10 +99,9 @@ namespace EE::Render
 
     void GlobalEnvironmentMapPass::UpdateDeviceResources
     (
-        RenderSystem*                                             pRenderSystem,
-        TArrayView<ForwardShadingMaterialShaderPipelineBucket>    materialShaderPipelineBuckets,
-        TArrayView<uint32_t const>                                clusterCapacity,
-        uint32_t                                                  numMeshInstancePages
+        RenderSystem*                                           pRenderSystem,
+        TArrayView<ForwardShadingMaterialShaderPipelineBucket>  materialShaderPipelineBuckets,
+        DeviceRenderWorld const&                                deviceRenderWorld
     )
     {
         EE_PROFILE_FUNCTION_RENDER();
@@ -141,7 +140,7 @@ namespace EE::Render
 
         for ( DeviceRenderView & renderView : m_renderViews )
         {
-            renderView.UpdateDeviceResources( pRenderSystem, clusterCapacity, numMeshInstancePages );
+            renderView.UpdateDeviceResources( pRenderSystem, deviceRenderWorld );
         }
     }
 

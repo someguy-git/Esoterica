@@ -104,7 +104,7 @@ namespace EE::Resource
 
     public:
 
-        CompileContext( ResourceID resourceID, TypeSystem::TypeRegistry const& typeRegistry, CompiledResourceDatabase& compiledResourceDB, CompilerRegistry const& compilerRegistry, FileSystem::Path const& sourceResourceDirectoryPath, FileSystem::Path const& compiledResourceDirectoryPath, Platform::Target platform = Platform::Target::PC, bool isCompilingForPackagedBuild = false )
+        CompileContext( ResourceID resourceID, TypeSystem::TypeRegistry const& typeRegistry, CompiledResourceDatabase& compiledResourceDB, CompilerRegistry const& compilerRegistry, FileSystem::Path const& sourceResourceDirectoryPath, FileSystem::Path const& compiledResourceDirectoryPath, Platform::Target platform = Platform::Target::PC, bool isCompilingForShippingBuild = false )
             : m_resourceID( resourceID )
             , m_typeRegistry( typeRegistry )
             , m_compiledResourceDB( compiledResourceDB )
@@ -112,7 +112,7 @@ namespace EE::Resource
             , m_sourceResourceDirectoryPath( sourceResourceDirectoryPath )
             , m_compiledResourceDirectoryPath( compiledResourceDirectoryPath )
             , m_platform( platform )
-            , m_isCompilingForPackagedBuild( isCompilingForPackagedBuild )
+            , m_isCompilingForShippingBuild( isCompilingForShippingBuild )
         {}
 
         ~CompileContext();
@@ -120,8 +120,8 @@ namespace EE::Resource
         inline bool HasValidArguments() const;
         inline bool IsValid() const { return m_pResourceToCompile != nullptr; }
 
-        EE_FORCE_INLINE bool IsCompilingForDevelopmentBuild() const { return !m_isCompilingForPackagedBuild; }
-        EE_FORCE_INLINE bool IsCompilingForPackagedBuild() const { return m_isCompilingForPackagedBuild; }
+        EE_FORCE_INLINE bool IsCompilingForDevelopmentBuild() const { return !m_isCompilingForShippingBuild; }
+        EE_FORCE_INLINE bool IsCompilingForShippingBuild() const { return m_isCompilingForShippingBuild; }
 
         inline ResourceID const& GetResourceID() const { EE_ASSERT( IsValid() ); return m_pResourceToCompile->m_ID; }
         inline FileSystem::Path const& GetInputPath() const { EE_ASSERT( IsValid() ); return m_pResourceToCompile->m_sourcePath; }
@@ -133,6 +133,8 @@ namespace EE::Resource
         CompilationResult LogError( char const* pFormat, ... ) const;
         void LogWarning( char const* pFormat, ... ) const;
         void LogMessage( char const* pFormat, ... ) const;
+
+        Log& GetLog() const { return m_log; }
 
         //-------------------------------------------------------------------------
 
@@ -218,7 +220,7 @@ namespace EE::Resource
         FileSystem::Path const                          m_sourceResourceDirectoryPath;
         FileSystem::Path const                          m_compiledResourceDirectoryPath;
         Platform::Target const                          m_platform = Platform::Target::PC;
-        bool const                                      m_isCompilingForPackagedBuild = false;
+        bool const                                      m_isCompilingForShippingBuild = false;
 
         // Options
         //-------------------------------------------------------------------------

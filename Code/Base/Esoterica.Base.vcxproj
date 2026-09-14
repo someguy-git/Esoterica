@@ -47,6 +47,7 @@
     <ClInclude Include="Render\HandleAllocator.h" />
     <ClInclude Include="Render\PageAllocator.h" />
     <ClInclude Include="FileSystem\DataFileExtension.h" />
+    <ClInclude Include="Resource\ResourceProviders\ResourceProvider_Local.h" />
     <ClInclude Include="ThirdParty\EA\eastl_Esoterica_TrackedAllocator.h" />
     <ClInclude Include="ThirdParty\lzav\lzav.h" />
     <ClInclude Include="ThirdParty\lzav\lzav_estoerica.h" />
@@ -113,10 +114,9 @@
     <ClInclude Include="Resource\ResourceHeader.h" />
     <ClInclude Include="Resource\ResourceID.h" />
     <ClInclude Include="Resource\ResourceLoader.h" />
-    <ClInclude Include="Resource\ResourceProvider.h" />
+    <ClInclude Include="Resource\IResourceProvider.h" />
     <ClInclude Include="Resource\ResourceProviders\ResourceProvider_Network.h" />
-    <ClInclude Include="Resource\ResourceProviders\ResourceProvider_Package.h" />
-    <ClInclude Include="Resource\ResourceProviders\ResourceNetworkMessages.h" />
+    <ClInclude Include="Resource\ResourceNetworkMessages.h" />
     <ClInclude Include="Resource\ResourcePtr.h" />
     <ClInclude Include="Resource\ResourceRecord.h" />
     <ClInclude Include="Resource\ResourceRequest.h" />
@@ -517,6 +517,7 @@
     <ClCompile Include="Network\Servers\NetworkServer.cpp" />
     <ClCompile Include="Network\Servers\NetworkServer_GNS.cpp" />
     <ClCompile Include="Render\HandleAllocator.cpp" />
+    <ClCompile Include="Resource\ResourceProviders\ResourceProvider_Local.cpp" />
     <ClCompile Include="Settings\Settings.cpp" />
     <ClCompile Include="ThirdParty\implot\implot_demo.cpp" />
     <ClCompile Include="ThirdParty\mpack\mpack_esoterica.cpp" />
@@ -570,7 +571,6 @@
     <ClCompile Include="Resource\ResourceID.cpp" />
     <ClCompile Include="Resource\ResourceLoader.cpp" />
     <ClCompile Include="Resource\ResourceProviders\ResourceProvider_Network.cpp" />
-    <ClCompile Include="Resource\ResourceProviders\ResourceProvider_Package.cpp" />
     <ClCompile Include="Resource\ResourceRecord.cpp" />
     <ClCompile Include="Resource\ResourceRequest.cpp" />
     <ClCompile Include="Resource\Settings\Settings_Resource.cpp" />

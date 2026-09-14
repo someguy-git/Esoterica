@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ResourceNetworkMessages.h"
-#include "Base/Resource/ResourceProvider.h"
+#include "Base/Resource/IResourceProvider.h"
+#include "Base/Resource/ResourceNetworkMessages.h"
 #include "Base/Resource/ResourceRequest.h"
 #include "Base/Time/Timers.h"
 #include "Base/Network/Clients/NetworkClient_WebSockets.h"
@@ -16,7 +16,7 @@ namespace EE::Resource
 
     //-------------------------------------------------------------------------
 
-    class EE_BASE_API NetworkResourceProvider final : public ResourceProvider
+    class EE_BASE_API NetworkResourceProvider final : public IResourceProvider
     {
         struct SentRequest
         {

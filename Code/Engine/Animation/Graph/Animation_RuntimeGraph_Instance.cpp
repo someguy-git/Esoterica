@@ -101,6 +101,7 @@ namespace EE::Animation
             }
         }
 
+        instantiationContext.m_pTaskSystem = m_graphContext.GetTaskSystem();
         for ( int16_t nodeIdx : nodesThatRequireFinalization )
         {
             instantiationContext.m_currentNodeIdx = nodeIdx;
@@ -507,6 +508,14 @@ namespace EE::Animation
             return false;
         }
 
+        // Do not allow injecting a graph that has any external slots in it
+        // The external poses allocate buffers from the same task system and will never free them, if we want to support this we need to rework how those buffers are allocated and freed (we dont need to support this at the moment)
+        if ( pExternalGraphInstance->GetNumExternalPoseSlots() > 0 )
+        {
+            EE_LOG_ERROR( LogCategory::Animation, "Graph Instance", "Cannot insert external graph (%s) since it contains external pose slots! This is not allowed!\n", pExternalGraphInstance->GetGraphDefinition()->GetResourceID().c_str() );
+            return false;
+        }
+
         // Get the node idx for the graph and ensure it is valid, users are expected to check slot validity before calling this function
         ReferencedGraphNode *pReferencedGraphNode = GetExternalGraphNode( slotID );
         EE_ASSERT( pReferencedGraphNode != nullptr && pReferencedGraphNode->IsExternalGraphSlot() );
@@ -616,71 +625,57 @@ namespace EE::Animation
         return m_pGraphDefinition->m_externalPoseSlots[nSlotIdx].m_slotID;
     }
 
-    bool GraphInstance::IsExternalPoseSet( StringID slotID ) const
+    bool GraphInstance::SetExternalPose( StringID slotID, Pose const &primaryPose, TVector<Pose const*> const& secondaryPoses, Transform const& rootMotionDelta, StringID boneMaskID )
     {
+        EE_ASSERT( IsStandaloneInstance() && !m_isExternalGraph );
         EE_ASSERT( slotID.IsValid() );
-
-        for ( auto const &eg : m_pGraphDefinition->m_externalPoseSlots )
-        {
-            if ( eg.m_slotID == slotID )
-            {
-                auto pExternalPoseNode = reinterpret_cast<ExternalPoseNode *>( m_nodes[eg.m_nodeIdx] );
-                return pExternalPoseNode->IsPoseSet();
-            }
-        }
-
-        EE_UNREACHABLE_CODE();
-        return false;
-    }
-
-    bool GraphInstance::GetExternalPoseState( StringID slotID, ExternalPoseData &outState )
-    {
-        EE_ASSERT( slotID.IsValid() );
-
-        for ( auto const &eg : m_pGraphDefinition->m_externalPoseSlots )
-        {
-            if ( eg.m_slotID == slotID )
-            {
-                auto pExternalPoseNode = reinterpret_cast<ExternalPoseNode *>( m_nodes[eg.m_nodeIdx] );
-                if ( pExternalPoseNode->IsPoseSet() )
-                {
-                    outState = pExternalPoseNode->m_poseData;
-                    return true;
-                }
-            }
-        }
-
-        //-------------------------------------------------------------------------
-
-        outState.Reset();
-        return false;
-    }
-
-    bool GraphInstance::SetExternalPose( StringID slotID, ExternalPoseData const& poseData )
-    {
-        EE_ASSERT( slotID.IsValid() );
-
-        Skeleton const* pSkeleton = GetPrimarySkeleton();
 
         // Get the node idx for the graph and ensure it is valid, users are expected to check slot validity before calling this function
         ExternalPoseNode *pExternalPoseNode = GetExternalPoseNode( slotID );
         EE_ASSERT( pExternalPoseNode != nullptr );
-        if ( pExternalPoseNode == nullptr )
+        EE_ASSERT( pExternalPoseNode->m_externalPoseBufferID.IsValid() );
+
+        Skeleton const *pSkeleton = GetPrimarySkeleton();
+        if ( primaryPose.GetSkeleton() != pSkeleton )
         {
-            EE_LOG_WARNING( LogCategory::Animation, "Graph Instance", "Cannot insert external pose into slot '%s' since the provide slot ID is INVALID!\n", slotID.c_str() );
             return false;
+        }
+
+        if ( !Math::IsNearEqual( rootMotionDelta.GetScale(), 1.0f ) )
+        {
+            return false;
+        }
+
+        int32_t nMaskSetIdx = InvalidIndex;
+        if ( boneMaskID.IsValid() )
+        {
+            nMaskSetIdx = pSkeleton->GetBoneMaskSetIndex( boneMaskID );
+            if ( nMaskSetIdx == InvalidIndex )
+            {
+                return false;
+            }
         }
 
         //-------------------------------------------------------------------------
 
-        pExternalPoseNode->m_poseData = poseData;
-        pExternalPoseNode->m_isPoseSet = true;
+        TaskSystem *pTaskSystem = m_graphContext.GetTaskSystem();
+        EE_ASSERT( pTaskSystem->IsValidCachedPose( pExternalPoseNode->m_externalPoseBufferID ) ); // This cannot happen but lets make doubly sure!
+        pTaskSystem->FillCachedPoseBuffer( pExternalPoseNode->m_externalPoseBufferID, primaryPose, secondaryPoses );
+        pExternalPoseNode->m_rootMotionDelta = rootMotionDelta;
+
+        pExternalPoseNode->m_boneMask.Reset();
+        if ( boneMaskID.IsValid() )
+        {
+            pExternalPoseNode->m_boneMask.EmplaceTask( (uint8_t) nMaskSetIdx );
+        }
 
         return true;
     }
 
     void GraphInstance::ClearExternalPose( StringID slotID )
     {
+        EE_ASSERT( IsStandaloneInstance() && !m_isExternalGraph );
+
         // Get the node idx for the graph and ensure it is valid, users are expected to check slot validity before calling this function
         ExternalPoseNode *pExternalPoseNode = GetExternalPoseNode( slotID );
         EE_ASSERT( pExternalPoseNode != nullptr );
@@ -692,9 +687,12 @@ namespace EE::Animation
 
         //-------------------------------------------------------------------------
 
-        pExternalPoseNode->m_poseData.Reset();
-        pExternalPoseNode->m_isPoseSet = false;
-        m_taskSerializationRequiresUpdate = true;
+        pExternalPoseNode->m_boneMask.Reset();
+        pExternalPoseNode->m_rootMotionDelta = Transform::Identity;
+
+        TaskSystem *pTaskSystem = m_graphContext.GetTaskSystem();
+        EE_ASSERT( pTaskSystem->IsValidCachedPose( pExternalPoseNode->m_externalPoseBufferID ) ); // This cannot happen but lets make doubly sure!
+        pTaskSystem->ClearCachedPoseBuffer( pExternalPoseNode->m_externalPoseBufferID );
     }
 
     void GraphInstance::ClearAllExternalPoses()
@@ -1100,22 +1098,7 @@ namespace EE::Animation
             for ( auto const &ep : m_pGraphDefinition->m_externalPoseSlots )
             {
                 auto pExternalPoseNode = reinterpret_cast<ExternalPoseNode *>( m_nodes[ep.m_nodeIdx] );
-                if ( pExternalPoseNode->IsPoseSet() )
-                {
-                    /*RecordedExternalPoseData *pEPD = pUpdateData->CreateExternalPoseData();
-                    pEPD->m_externalPoseNodeIdx = ep.m_nodeIdx;
-                    pEPD->m_slotID = ep.m_slotID;
-
-                    pEPD->m_clipResourceID0 = ( pExternalPoseNode->m_poseData.m_pClip0 != nullptr ) ? pExternalPoseNode->m_poseData.m_pClip0->GetResourceID() : ResourceID();
-                    pEPD->m_startTime0 = pExternalPoseNode->m_poseData.m_startTime0;
-                    pEPD->m_endTime0 = pExternalPoseNode->m_poseData.m_endTime0;
-
-                    pEPD->m_clipResourceID1 = ( pExternalPoseNode->m_poseData.m_pClip1 != nullptr ) ? pExternalPoseNode->m_poseData.m_pClip1->GetResourceID() : ResourceID();
-                    pEPD->m_startTime1 = pExternalPoseNode->m_poseData.m_startTime1;
-                    pEPD->m_endTime1 = pExternalPoseNode->m_poseData.m_endTime1;
-
-                    pEPD->m_blendWeight = pExternalPoseNode->m_poseData.m_blendWeight;*/
-                }
+                // TODO!
             }
 
             // Record all external graphs
@@ -1228,23 +1211,8 @@ namespace EE::Animation
 
         for ( auto const &ep : m_pGraphDefinition->m_externalPoseSlots )
         {
-            /* auto pExternalPoseNode = reinterpret_cast<ExternalPoseNode *>( m_nodes[ep.m_nodeIdx] );
-             if ( pExternalPoseNode->IsPoseSet() )
-             {
-                 RecordedExternalPoseData *pEPD = pUpdateData->CreateExternalPoseData();
-                 pEPD->m_externalPoseNodeIdx = ep.m_nodeIdx;
-                 pEPD->m_slotID = ep.m_slotID;
-
-                 pEPD->m_clipResourceID0 = ( pExternalPoseNode->m_poseData.m_pClip0 != nullptr ) ? pExternalPoseNode->m_poseData.m_pClip0->GetResourceID() : ResourceID();
-                 pEPD->m_startTime0 = pExternalPoseNode->m_poseData.m_startTime0;
-                 pEPD->m_endTime0 = pExternalPoseNode->m_poseData.m_endTime0;
-
-                 pEPD->m_clipResourceID1 = ( pExternalPoseNode->m_poseData.m_pClip1 != nullptr ) ? pExternalPoseNode->m_poseData.m_pClip1->GetResourceID() : ResourceID();
-                 pEPD->m_startTime1 = pExternalPoseNode->m_poseData.m_startTime1;
-                 pEPD->m_endTime1 = pExternalPoseNode->m_poseData.m_endTime1;
-
-                 pEPD->m_blendWeight = pExternalPoseNode->m_poseData.m_blendWeight;
-             }*/
+            auto pExternalPoseNode = reinterpret_cast<ExternalPoseNode *>( m_nodes[ep.m_nodeIdx] );
+            // TODO
         }
 
         // Record all external graph nodes

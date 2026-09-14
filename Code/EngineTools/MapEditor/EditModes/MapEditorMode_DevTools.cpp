@@ -129,12 +129,16 @@ namespace EE
         auto DrawPickable = [pickingID, &drawingCtx] ( uint64_t hitTestID, DebugMeshID meshID, Transform const& transform, bool wireframe = false )
         {
             Color color = Colors::Red.GetAlphaVersion( 0.75f );
+            bool outline = false;
             if ( pickingID.IsSet() && pickingID.m_primaryID == hitTestID && !pickingID.HasSecondaryID() )
             {
                 color = Colors::Green;
+                outline = true;
             }
 
             drawingCtx.SetHitTestID( hitTestID );
+            drawingCtx.BeginDrawOutline( outline );
+
             if ( wireframe )
             {
                 drawingCtx.DrawWireMesh( meshID, transform, color );
@@ -143,7 +147,9 @@ namespace EE
             {
                 drawingCtx.DrawMesh( meshID, transform, color );
             }
+
             drawingCtx.ClearHitTestID();
+            drawingCtx.EndDrawOutline();
         };
 
         DrawPickable( 1, DebugMeshID::Box, Transform( Quaternion::Identity, Vector( 0, -2, 3 ) ) );
@@ -151,7 +157,7 @@ namespace EE
         DrawPickable( 3, DebugMeshID::Hemisphere, Transform( Quaternion::Identity, Vector( 6, -2, 3 ) ) );
         DrawPickable( 4, DebugMeshID::Cylinder, Transform( Quaternion::Identity, Vector( 9, -2, 3 ) ) );
         DrawPickable( 5, DebugMeshID::OpenCylinder, Transform( Quaternion::Identity, Vector( 12, -2, 3 ) ) );
-        
+
         DrawPickable( 6, DebugMeshID::Box, Transform( Quaternion::Identity, Vector( 0, -2, 0 ) ), true );
         DrawPickable( 7, DebugMeshID::Sphere, Transform( Quaternion::Identity, Vector( 3, -2, 0 ) ), true );
         DrawPickable( 8, DebugMeshID::Hemisphere, Transform( Quaternion::Identity, Vector( 6, -2, 0 ) ), true );
@@ -184,39 +190,39 @@ namespace EE
         }*/
 
 
-       /* drawingCtx.DrawBox( Transform( Quaternion::Identity, Vector( 0, -4, 3 ) ), Vector( 1, 0.2f, 0.5f ), Colors::Red.GetAlphaVersion( 0.5f ) );
+        /* drawingCtx.DrawBox( Transform( Quaternion::Identity, Vector( 0, -4, 3 ) ), Vector( 1, 0.2f, 0.5f ), Colors::Red.GetAlphaVersion( 0.5f ) );
 
-        drawingCtx.DrawBox( Transform( Quaternion::Identity, Vector( 3, -4, 3 ) ), Vector( 1, 0.2f, 0.5f ), Colors::Red.GetAlphaVersion( 0.5f ) );
+         drawingCtx.DrawBox( Transform( Quaternion::Identity, Vector( 3, -4, 3 ) ), Vector( 1, 0.2f, 0.5f ), Colors::Red.GetAlphaVersion( 0.5f ) );
 
-        drawingCtx.DrawCylinder( Transform( Quaternion::Identity, Vector( 6, -4, 3 ) ), 0.3f, 0.75f, Colors::Green.GetAlphaVersion( 0.5f ) );
+         drawingCtx.DrawCylinder( Transform( Quaternion::Identity, Vector( 6, -4, 3 ) ), 0.3f, 0.75f, Colors::Green.GetAlphaVersion( 0.5f ) );
 
 
-        Vector capsuleOrigin = Vector( 9, -4, 3 );
-        drawingCtx.DrawCapsule( Transform( Quaternion::Identity, capsuleOrigin ), 0.3f, 0.75f, Colors::Blue.GetAlphaVersion( 0.25f ) );
-        drawingCtx.DrawLine( capsuleOrigin - Vector( 0, 0, 1.05f ), capsuleOrigin + Vector( 0, 0, 1.05f ), Colors::Gold, 1.0f );
-        drawingCtx.DrawLine( capsuleOrigin - Vector( 0, 0, 0.75f ), capsuleOrigin + Vector( 0, 0, 0.75f ), Colors::Red, 1.0f );
+         Vector capsuleOrigin = Vector( 9, -4, 3 );
+         drawingCtx.DrawCapsule( Transform( Quaternion::Identity, capsuleOrigin ), 0.3f, 0.75f, Colors::Blue.GetAlphaVersion( 0.25f ) );
+         drawingCtx.DrawLine( capsuleOrigin - Vector( 0, 0, 1.05f ), capsuleOrigin + Vector( 0, 0, 1.05f ), Colors::Gold, 1.0f );
+         drawingCtx.DrawLine( capsuleOrigin - Vector( 0, 0, 0.75f ), capsuleOrigin + Vector( 0, 0, 0.75f ), Colors::Red, 1.0f );
 
-        drawingCtx.DrawPoint( Vector( 11, -4, 3 ), Colors::Yellow );
-        drawingCtx.DrawMesh( MeshIDs::Hemisphere, Transform( Quaternion::Identity, Vector( 11, -4, 3 ) ) );*/
+         drawingCtx.DrawPoint( Vector( 11, -4, 3 ), Colors::Yellow );
+         drawingCtx.DrawMesh( MeshIDs::Hemisphere, Transform( Quaternion::Identity, Vector( 11, -4, 3 ) ) );*/
 
-        //-------------------------------------------------------------------------
+         //-------------------------------------------------------------------------
 
-        //Quaternion q = Quaternion::Identity;// ( EulerAngles( 34, 45, 0 ) );
-        //Vector v = Vector::Zero;
+         //Quaternion q = Quaternion::Identity;// ( EulerAngles( 34, 45, 0 ) );
+         //Vector v = Vector::Zero;
 
-        //Render::DebugMesh mesh;
-        //Render::DebugMesh::CreateHemisphere( q, v, 1, mesh );
+         //Render::DebugMesh mesh;
+         //Render::DebugMesh::CreateHemisphere( q, v, 1, mesh );
 
-        //for ( int32_t i = 0; i < mesh.m_vertices.size(); i += 3 )
-        //{
-        //    Render::DebugMesh::Vertex v0 = mesh.m_vertices[i];
-        //    Render::DebugMesh::Vertex v1 = mesh.m_vertices[i + 1];
-        //    Render::DebugMesh::Vertex v2 = mesh.m_vertices[i + 2];
+         //for ( int32_t i = 0; i < mesh.m_vertices.size(); i += 3 )
+         //{
+         //    Render::DebugMesh::Vertex v0 = mesh.m_vertices[i];
+         //    Render::DebugMesh::Vertex v1 = mesh.m_vertices[i + 1];
+         //    Render::DebugMesh::Vertex v2 = mesh.m_vertices[i + 2];
 
-        //    drawingCtx.DrawLine( v0.m_pos, v1.m_pos, Colors::Red );
-        //    drawingCtx.DrawLine( v1.m_pos, v2.m_pos, Colors::Green );
-        //    drawingCtx.DrawLine( v2.m_pos, v0.m_pos, Colors::Blue );
-        //}
+         //    drawingCtx.DrawLine( v0.m_pos, v1.m_pos, Colors::Red );
+         //    drawingCtx.DrawLine( v1.m_pos, v2.m_pos, Colors::Green );
+         //    drawingCtx.DrawLine( v2.m_pos, v0.m_pos, Colors::Blue );
+         //}
     }
 
     void DeveloperToolsMapEditorMode::UpdateAndDraw_IntersectionTests( UpdateContext const& context, bool isFocused )
@@ -256,7 +262,7 @@ namespace EE
         //Vector raySphereStart( 2.29216003f, -6.37393999f, 0.899999976f );
         Vector raySphereDir( -0.289096773f, -0.953421950f, 0.0860790610f );
         Vector raySphereStart( 2.29216003f, -6.37393999f, 0.899999976f );
-        
+
         raySphereStart = Vector::MultiplyAdd( raySphereDir, Vector( 8 ), raySphereStart );
 
         Vector sphere( -0.0497840717f, -14.0975161f, 1.59731781f );

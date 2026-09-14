@@ -11,6 +11,7 @@
 #define COMMON_SAMPLER_LINEAR_CLAMP_COMPARE 4
 
 #define COMMON_SAMPLER_LINEAR_CLAMP_MAX     5
+#define COMMON_SAMPLER_LINEAR_CLAMP_MIN     6
 
 #ifndef __cplusplus
 
@@ -23,6 +24,7 @@
     #define GetLinearClampCompareSampler() GetSamplerState( COMMON_SAMPLER_LINEAR_CLAMP_COMPARE )
 
     #define GetLinearClampMaxSampler() GetSamplerState( COMMON_SAMPLER_LINEAR_CLAMP_MAX )
+    #define GetLinearClampMinSampler() GetSamplerState( COMMON_SAMPLER_LINEAR_CLAMP_MIN )
 #endif
 
 #endif

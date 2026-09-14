@@ -251,9 +251,6 @@
     <ClCompile Include="Resource\ResourceProviders\ResourceProvider_Network.cpp">
       <Filter>Resource\ResourceProviders</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\ResourceProviders\ResourceProvider_Package.cpp">
-      <Filter>Resource\ResourceProviders</Filter>
-    </ClCompile>
     <ClCompile Include="Encoding\Embed.cpp">
       <Filter>Encoding</Filter>
     </ClCompile>
@@ -442,6 +439,7 @@
     </ClCompile>
     <ClCompile Include="Imgui\ImguiTextureID.cpp" />
     <ClCompile Include="ThirdParty\implot\implot_demo.cpp" />
+    <ClCompile Include="Resource\ResourceProviders\ResourceProvider_Local.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Esoterica.h" />
@@ -774,7 +772,7 @@
     <ClInclude Include="Resource\ResourceLoader.h">
       <Filter>Resource</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\ResourceProvider.h">
+    <ClInclude Include="Resource\IResourceProvider.h">
       <Filter>Resource</Filter>
     </ClInclude>
     <ClInclude Include="Resource\ResourcePtr.h">
@@ -801,10 +799,7 @@
     <ClInclude Include="Resource\ResourceProviders\ResourceProvider_Network.h">
       <Filter>Resource\ResourceProviders</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\ResourceProviders\ResourceProvider_Package.h">
-      <Filter>Resource\ResourceProviders</Filter>
-    </ClInclude>
-    <ClInclude Include="Resource\ResourceProviders\ResourceNetworkMessages.h">
+    <ClInclude Include="Resource\ResourceNetworkMessages.h">
       <Filter>Resource\ResourceProviders</Filter>
     </ClInclude>
     <ClInclude Include="Encoding\Embed.h">
@@ -1847,6 +1842,7 @@
     </ClInclude>
     <ClInclude Include="ThirdParty\mINI\ini.h" />
     <ClInclude Include="Imgui\ImguiTextureID.h" />
+    <ClInclude Include="Resource\ResourceProviders\ResourceProvider_Local.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Render\RHI.esh">

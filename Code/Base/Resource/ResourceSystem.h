@@ -17,7 +17,7 @@ namespace EE { class TaskScheduler; }
 
 namespace EE::Resource
 {
-    class ResourceProvider;
+    class IResourceProvider;
     class ResourceLoader;
     class ResourceRequest;
     class ResourceSettings;
@@ -70,7 +70,7 @@ namespace EE::Resource
 
         inline bool WasInitialized() const { return m_pResourceProvider != nullptr; }
         ResourceSettings const& GetSettings() const;
-        void Initialize( ResourceProvider* pResourceProvider );
+        void Initialize( IResourceProvider* pResourceProvider );
         void Shutdown();
 
         // Do we still have work we need to perform
@@ -131,7 +131,7 @@ namespace EE::Resource
             return !m_externallyUpdatedResources.empty();
         }
 
-        inline ResourceProvider const* GetResourceProvider() const { return m_pResourceProvider; }
+        inline IResourceProvider const* GetResourceProvider() const { return m_pResourceProvider; }
 
         void RequestResourceHotReload( ResourceID const& resourceID );
         inline TInlineVector<ResourceRequesterID, 20> const& GetUsersToBeReloaded() const { return m_usersThatRequireReload; }
@@ -169,7 +169,7 @@ namespace EE::Resource
     private:
 
         TaskSystem&                                             m_taskSystem;
-        ResourceProvider*                                       m_pResourceProvider = nullptr;
+        IResourceProvider*                                      m_pResourceProvider = nullptr;
         THashMap<ResourceTypeID, ResourceLoader*>               m_resourceLoaders;
         THashMap<ResourceID, ResourceRecord*>                   m_resourceRecords;
         mutable Threading::RecursiveMutex                       m_accessLock;

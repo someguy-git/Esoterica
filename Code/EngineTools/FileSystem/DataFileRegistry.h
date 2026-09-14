@@ -33,7 +33,7 @@ namespace EE
     //-------------------------------------------------------------------------
     // The way we load descriptors is pretty naive and can definitely be improved
 
-    class EE_ENGINETOOLS_API DataFileSystem final
+    class EE_ENGINETOOLS_API DataFileRegistry final
     {
     public:
 
@@ -122,7 +122,7 @@ namespace EE
 
     public:
 
-        ~DataFileSystem();
+        ~DataFileRegistry();
 
         inline bool WasInitialized() const { return m_pTypeRegistry != nullptr; }
         void Initialize( TypeSystem::TypeRegistry const* pTypeRegistry, TaskSystem* pTaskSystem, FileSystem::Path const& rawResourceDirPath, FileSystem::Path const& compiledResourceDirPath );
@@ -228,7 +228,7 @@ namespace EE
         void GetAllResourcesThatDependOnFile( DataPath const& sourceFile, TVector<DataPath>& outCompileDependents, TVector<ResourceID>* pOutInstallDependents = nullptr ) const;
 
         // Get all files that have a reference on this file - this is just checking all data path/resource ID properties - note: this is a very slow function so use sparingly
-        void GetAllFilesThatReferenceFile( DataPath const& sourceFile, TVector<DataFileSystem::FileInfo const*>& outReferencers ) const;
+        void GetAllFilesThatReferenceFile( DataPath const& sourceFile, TVector<DataFileRegistry::FileInfo const*>& outReferencers ) const;
 
         // Event that fires whenever a resource is deleted
         TEventHandle<DataPath> OnFileDeleted() const { return m_fileDeletedEvent; }
@@ -263,7 +263,7 @@ namespace EE
 
         // Directory operations
         DirectoryInfo* FindDirectory( FileSystem::Path const& dirPath );
-        DirectoryInfo const* FindDirectory( FileSystem::Path const& dirPath ) const { return const_cast<DataFileSystem*>( this )->FindDirectory( dirPath ); }
+        DirectoryInfo const* FindDirectory( FileSystem::Path const& dirPath ) const { return const_cast<DataFileRegistry*>( this )->FindDirectory( dirPath ); }
         DirectoryInfo* FindOrCreateDirectory( FileSystem::Path const& dirPath );
 
         // Add/Remove records
@@ -296,7 +296,7 @@ namespace EE
         mutable TEvent<DataPath>                                    m_fileDeletedEvent;
 
         // Build state
-        mutable Threading::Mutex                                    m_mutex;
+        mutable Threading::ReadWriteMutex                           m_mutex;
         std::atomic<DatabaseState>                                  m_state = DatabaseState::Empty;
         mutable ITaskSet*                                           m_pAsyncTask = nullptr;
         std::atomic<bool>                                           m_cancelActiveTask = false;

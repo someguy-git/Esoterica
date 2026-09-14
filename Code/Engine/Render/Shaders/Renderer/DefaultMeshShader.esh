@@ -36,24 +36,23 @@ void MS_main
     #endif
     
     StructuredBuffer<RenderView>        renderViewBuffer            = GetBuffer( RootCBV.m_renderViewBuffer );
-    StructuredBuffer<MeshInstance>      meshInstanceBuffer          = GetBuffer( RootCBV.m_meshInstanceBuffer );
-    ByteAddressBuffer                   meshInstanceRootBuffer      = GetBuffer( RootCBV.m_meshInstanceRootBuffer );
-    StructuredBuffer<MeshCluster>       clusterBuffer               = GetBuffer( RootCBV.m_clusterBuffer );
+    StructuredBuffer<MeshInstance>      meshInstanceBuffer          = GetBuffer( RootConstants.m_instanceBuffer );
+    StructuredBuffer<MeshInstanceRoot>  meshInstanceRootBuffer      = GetBuffer( RootCBV.m_meshInstanceRootBuffer );
     StructuredBuffer<SkinningTransform> skinningTransformBuffer     = GetBuffer( RootCBV.m_skinningTransformBuffer ); 
 
-    Buffer<uint4>                       clusterRecordBuffer        = GetBuffer( RWBufferToBuffer( RootCBV.m_ClusterRecordBuffer ) );
+    StructuredBuffer<ClusterToInstance> clusterToInstanceBuffer     = GetBuffer( RootConstants.m_clusterToInstanceBuffer );
+    StructuredBuffer<uint>              drawClusterBuffer           = GetBuffer( RootConstants.m_drawClusterBuffer );
 
-    const uint                          localClusterIndex           = SelectPosFromLSBRank128( uint4( RootConstants.m_clusterMask0, RootConstants.m_clusterMask1, RootConstants.m_clusterMask2, RootConstants.m_clusterMask3 ), groupID + 1 );
-    const uint4                         clusterRecord               = clusterRecordBuffer[RootConstants.m_clusterRecordBase + localClusterIndex];
-    const uint                          instanceIndex               = clusterRecord.x;
-    const uint                          clusterIndex                = clusterRecord.y;
+    const ClusterToInstance             clusterToInstance           = clusterToInstanceBuffer[drawClusterBuffer[RootConstants.m_drawClusterBufferOffset + groupID]];
+    const uint                          instanceIndex               = clusterToInstance.m_instanceIndex;
+    const uint                          clusterOffset               = clusterToInstance.m_clusterOffset;
     
-    const MeshCluster                   cluster                     = clusterBuffer[clusterIndex];
     const MeshInstance                  meshInstance                = meshInstanceBuffer[instanceIndex];
     const RenderView                    renderView                  = renderViewBuffer[RootConstants.m_renderViewIndex];
     
-    ByteAddressBuffer                   clusterVertexBuffer         = GetBuffer( NonUniformResourceIndex( meshInstance.m_clusterVertexBuffer ) );
-    Buffer<uint>                        clusterTriangleBuffer       = GetBuffer( NonUniformResourceIndex( meshInstance.m_clusterTriangleBuffer ) );
+    ByteAddressBuffer                   meshBuffer                  = GetBuffer( NonUniformResourceIndex( meshInstance.m_meshBuffer ) );
+    const uint                          clusterAddress              = GetMeshClusterAddress( clusterOffset );
+    const MeshCluster                   cluster                     = meshBuffer.Load<MeshCluster>( clusterAddress );
     
     ByteAddressBuffer                   shaderDataBuffer            = GetBuffer( RootCBV.m_shaderDataBuffer );
 
@@ -65,20 +64,19 @@ void MS_main
     
     //-------------------------------------------------------------------------
 
-    uint numClusterVertices = min( cluster.m_numVertices, MAX_CLUSTER_VERTICES );
-    uint numClusterTriangles = min( cluster.m_numTriangles, MAX_CLUSTER_TRIANGLES );
+    uint numClusterVertices = min( cluster.m_numVertices + 1, MAX_CLUSTER_VERTICES );
+    uint numClusterTriangles = min( cluster.m_numTriangles + 1, MAX_CLUSTER_TRIANGLES );
         
     SetMeshOutputCounts( numClusterVertices, numClusterTriangles );
 
     // Unpack cluster data
     //-------------------------------------------------------------------------
     
-    uint                meshInstanceDataAddress;
-    MeshInstanceRoot    meshInstanceRoot                        = meshInstance.LoadRoot( meshInstanceRootBuffer, meshInstanceDataAddress );
+    MeshInstanceRoot    meshInstanceRoot    = meshInstance.LoadRoot( meshInstanceRootBuffer );
 
-    ShaderParameters    shaderParameters                        = shaderDataBuffer.Load<ShaderParameters>( meshInstance.m_shaderParametersOffsetIn32ByteBlocks * 32 );
-    bool                isDoubleSided                           = ( shaderParameters.m_shaderFlags & EE_SHADER_FLAG_TWO_SIDED ) != 0;
-    RendererGlobalFlags rendererGlobalFlags                     = RootCBV.m_rendererGlobalFlags;
+    ShaderParameters    shaderParameters    = shaderDataBuffer.Load<ShaderParameters>( meshInstance.m_shaderParametersOffsetIn32ByteBlocks * 32 );
+    bool                isDoubleSided       = ( shaderParameters.m_shaderFlags & EE_SHADER_FLAG_TWO_SIDED ) != 0;
+    RendererGlobalFlags rendererGlobalFlags = RootCBV.m_rendererGlobalFlags;
     
     // Special case - global environment map view shouldn't compute lighting
     float3 worldPositionOffset = 0.0.xxx;
@@ -102,24 +100,76 @@ void MS_main
     bool        flipWinding             = determinant( ( float3x3 )meshInstanceTransform ) < 0.0;
     
     if ( groupThreadID < numClusterVertices )
-    {        
-        TransformedVertex transformedVertex = TransformVertex
-        (
-            clusterVertexBuffer, skinningTransformBuffer,
-            meshInstanceRoot, meshInstance, flipWinding,
-            cluster.m_vertexOffset + groupThreadID,
-            cluster.GetAnchor(), cluster.m_sharedExponent
-        );
+    {
+        precise float3 vertexPosition = LoadClusterVertexPosition( meshBuffer, cluster, groupThreadID );
+
+        uint const attributeBaseAddress = cluster.GetDataOffsetInBytes();
+
+        uint const normalAddress = attributeBaseAddress + cluster.GetVertexNormalOffset( groupThreadID );
+        float3 vertexNormal = LoadClusterVertexNormal( meshBuffer, normalAddress );
+
+        float2 uv0 = 0.0.xx;
+        if ( cluster.m_numTextureCoordinateAttributes > 0 )
+        {
+            uv0 = meshBuffer.Load<TextureCoordinateAttribute>( attributeBaseAddress + cluster.GetVertexUVOffset( 0, groupThreadID ) );
+        }
+
+        float2 uv1 = 0.0.xx;
+        if ( cluster.m_numTextureCoordinateAttributes > 1 )
+        {
+            uv1 = meshBuffer.Load<TextureCoordinateAttribute>( attributeBaseAddress + cluster.GetVertexUVOffset( 1, groupThreadID ) );
+        }
+
+        float4 vertexColor = 1.0.xxxx;
+        if ( cluster.m_numColorAttributes > 0 )
+        {
+            vertexColor = UnpackColor( meshBuffer.Load<VertexColorAttribute>( attributeBaseAddress + cluster.GetVertexColorOffset( 0, groupThreadID ) ) );
+        }
         
-        precise float3 worldPosition = transformedVertex.m_worldPosition + worldPositionOffset;
-        precise float4 clipPosition  = mul( renderView.m_viewProjectionMatrix, float4( transformedVertex.m_worldPosition, 1.0 ) );
+        precise float3 localPosition = mul( meshInstance.m_localTransform, float4( vertexPosition, 1.0 ) ).xyz;
+        float3 localNormal = mul( Adjugate( meshInstance.m_localTransform ), vertexNormal );
+        
+        if ( meshInstanceRoot.m_boneOffset != ~0U )
+        {
+            float3 skinnedPosition = 0.0.xxx;
+            float3 skinnedNormal = 0.0.xxx;
+            
+            [loop]
+            for ( uint skinningAttributeIndex = 0; skinningAttributeIndex < cluster.m_numSkinningAttributes; ++skinningAttributeIndex )
+            {
+                SkinningAttribute skinningAttribute = meshBuffer.Load<SkinningAttribute>( attributeBaseAddress + cluster.GetSkinningAttributeOffset( skinningAttributeIndex, groupThreadID ) );
+            
+                [unroll( 4 )]
+                for ( uint boneIndex = 0; boneIndex < 4; ++boneIndex )
+                {
+                    int boneTransformIndex = skinningAttribute.m_boneIndices[boneIndex];
+                    float boneWeight = skinningAttribute.m_boneWeights[boneIndex];
+                
+                    if ( boneTransformIndex != -1 )
+                    {
+                        SkinningTransform skinningTransform = skinningTransformBuffer[meshInstanceRoot.m_boneOffset + boneTransformIndex];
+                
+                        skinnedPosition += skinningTransform.TransformPoint( localPosition ) * boneWeight;
+                        skinnedNormal += skinningTransform.TransformNormal( localNormal ) * boneWeight;
+                    }
+                }
+            }
+            
+            localPosition = skinnedPosition;
+            localNormal = normalize( skinnedNormal );
+        }
+        
+        if ( flipWinding ) { localNormal = -localNormal; }
+        
+        precise float3 worldPosition = mul( meshInstanceRoot.m_rootTransform, float4( localPosition, 1.0 ) ).xyz + worldPositionOffset;
+        precise float4 clipPosition  = mul( renderView.m_viewProjectionMatrix, float4( worldPosition, 1.0 ) );
         
         VertexOutput output;
         output.m_clipPosition   = clipPosition;
         output.m_worldPosition  = worldPosition;
-        output.m_worldNormal    = transformedVertex.m_worldNormal;
-        output.m_uv             = float4( transformedVertex.m_vertex.m_uv0, transformedVertex.m_vertex.m_uv1 );
-        output.m_color          = UnpackColor( transformedVertex.m_vertex.m_packedColor );
+        output.m_worldNormal    = normalize( mul( Adjugate( meshInstanceRoot.m_rootTransform ), localNormal ) );
+        output.m_uv             = float4( uv0, uv1 );
+        output.m_color          = vertexColor;
         
         //#define DEBUG_CLUSTERS
         #ifdef DEBUG_CLUSTERS
@@ -139,7 +189,7 @@ void MS_main
 
     if ( groupThreadID < numClusterTriangles )
     {
-        uint3 triangleIndices = UnpackTriangle( clusterTriangleBuffer[cluster.m_triangleOffset + groupThreadID] );
+        uint3 triangleIndices = LoadMeshClusterTriangle( meshBuffer, cluster, groupThreadID );
 
         if ( !isDoubleSided )
         {
@@ -166,12 +216,12 @@ void MS_main
         worldVertices[1] = gsWorldVertices[triangleIndices.y];
         worldVertices[2] = gsWorldVertices[triangleIndices.z];
         
-        float3 triangleNormal = normalize( cross( worldVertices[2] - worldVertices[0], worldVertices[1] - worldVertices[0] ) );
+        float3 triangleNormal = normalize( cross( worldVertices[1] - worldVertices[0], worldVertices[2] - worldVertices[0] ) );
             
         PrimitiveOutput output = ( PrimitiveOutput ) 0;
         output.m_cullPrimitive      = IsTriangleCulled( clipVertices, renderView.m_renderTargetSize.xy, isDoubleSided );
         output.SetInstanceIndex( instanceIndex );
-        output.SetClusterIndex( clusterIndex );
+        output.SetClusterIndex( clusterOffset );
         output.SetShaderParametersOffsetIn32ByteBlocks( meshInstance.m_shaderParametersOffsetIn32ByteBlocks );
         output.SetTriangleNormal( triangleNormal );
             
@@ -198,7 +248,7 @@ void MS_main
 
     if ( ( groupThreadID == 0 ) && ( gsNumIntersections > 0 ) )
     {
-        InterlockedMin( instancePickingDistancesBuffer[instanceIndex], gsIntersectionDistanceMin );
+        InterlockedMin( instancePickingDistancesBuffer[meshInstance.m_meshInstanceRootIndex], gsIntersectionDistanceMin );
     }
     #endif
 }

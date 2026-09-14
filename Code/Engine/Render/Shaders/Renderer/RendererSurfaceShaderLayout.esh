@@ -5,11 +5,11 @@
 #include "Base/Render/RHI.esh"
 #include "Engine/Render/Shaders/EngineShader.esh"
 
-EE_BEGIN_SHADER_TYPES_NAMESPACE
+// Each shader owns 3 render buckets per view - opaque, alpha test, alpha blend.
+// Keep in sync with DeviceRenderView::s_NumRenderBucketsPerViewBucket and MaterialShaderRenderBucket!
+#define EE_NUM_RENDER_BUCKETS_PER_SHADER_PER_VIEW 3
 
-    // Each shader owns 3 render buckets per view - opaque, alpha test, alpha blend.
-    // Keep in sync with DeviceRenderView::s_NumRenderBucketsPerViewBucket and MaterialShaderRenderBucket!
-    //-------------------------------------------------------------------------
+EE_BEGIN_SHADER_TYPES_NAMESPACE
 
     uint GetBucketTypeForView( ShaderParameters shaderParameters, bool renderViewDepthOnly )
     {

@@ -78,18 +78,18 @@ namespace EE::Render
         uint32_t textureWidth = uint32_t( textureSize.m_x );
         uint32_t textureHeight = uint32_t( textureSize.m_y );
 
-        if ( !pRenderViewport->m_SMAA_StencilTexture || !pRenderViewport->m_SMAA_EdgesTexture || !pRenderViewport->m_SMAA_BlendTexture || !pRenderViewport->m_SMAA_ResultTexture ||
-             pRenderViewport->m_SMAA_EdgesTexture->m_width != textureWidth || pRenderViewport->m_SMAA_EdgesTexture->m_height != textureHeight ||
-             pRenderViewport->m_SMAA_BlendTexture->m_width != textureWidth || pRenderViewport->m_SMAA_BlendTexture->m_height != textureHeight ||
-             pRenderViewport->m_SMAA_ResultTexture->m_width != textureWidth || pRenderViewport->m_SMAA_ResultTexture->m_height != textureHeight ||
-             pRenderViewport->m_SMAA_StencilTexture->m_width != textureWidth || pRenderViewport->m_SMAA_StencilTexture->m_height != textureHeight )
+        if ( !pRenderViewport->m_SMAA_stencilTexture || !pRenderViewport->m_SMAA_edgesTexture || !pRenderViewport->m_SMAA_blendTexture || !pRenderViewport->m_SMAA_resultTexture ||
+             pRenderViewport->m_SMAA_edgesTexture->m_width != textureWidth || pRenderViewport->m_SMAA_edgesTexture->m_height != textureHeight ||
+             pRenderViewport->m_SMAA_blendTexture->m_width != textureWidth || pRenderViewport->m_SMAA_blendTexture->m_height != textureHeight ||
+             pRenderViewport->m_SMAA_resultTexture->m_width != textureWidth || pRenderViewport->m_SMAA_resultTexture->m_height != textureHeight ||
+             pRenderViewport->m_SMAA_stencilTexture->m_width != textureWidth || pRenderViewport->m_SMAA_stencilTexture->m_height != textureHeight )
         {
             pRenderSystem->QueueResourceDelete
             (
-                eastl::move( pRenderViewport->m_SMAA_StencilTexture ),
-                eastl::move( pRenderViewport->m_SMAA_EdgesTexture ),
-                eastl::move( pRenderViewport->m_SMAA_BlendTexture ),
-                eastl::move( pRenderViewport->m_SMAA_ResultTexture )
+                eastl::move( pRenderViewport->m_SMAA_stencilTexture ),
+                eastl::move( pRenderViewport->m_SMAA_edgesTexture ),
+                eastl::move( pRenderViewport->m_SMAA_blendTexture ),
+                eastl::move( pRenderViewport->m_SMAA_resultTexture )
             );
 
             RHI::TextureParameters edgesTextureParameters = {};
@@ -99,18 +99,18 @@ namespace EE::Render
             edgesTextureParameters.m_descriptorTypes.SetMultipleFlags( RHI::DescriptorTypeFlags::RenderTarget, RHI::DescriptorTypeFlags::Texture );
             edgesTextureParameters.m_debugName.sprintf( "SMAA Edges Target %dx%d", textureWidth, textureHeight );
 
-            pRenderViewport->m_SMAA_EdgesTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), edgesTextureParameters );
+            pRenderViewport->m_SMAA_edgesTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), edgesTextureParameters );
 
             RHI::TextureParameters blendTextureParameters = edgesTextureParameters;
             blendTextureParameters.m_debugName.sprintf( "SMAA Blend Target %dx%d", textureWidth, textureHeight );
 
-            pRenderViewport->m_SMAA_BlendTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), blendTextureParameters );
+            pRenderViewport->m_SMAA_blendTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), blendTextureParameters );
 
             RHI::TextureParameters resultTextureParameters = edgesTextureParameters;
             resultTextureParameters.m_format = RHI::DataFormat::RG11_B10_UFloat;
             resultTextureParameters.m_debugName.sprintf( "SMAA Result Target %dx%d", textureWidth, textureHeight );
 
-            pRenderViewport->m_SMAA_ResultTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), resultTextureParameters );
+            pRenderViewport->m_SMAA_resultTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), resultTextureParameters );
 
             RHI::TextureParameters stencilTextureParameters = edgesTextureParameters;
             stencilTextureParameters.m_format = RHI::DataFormat::S8_Uint;
@@ -118,7 +118,7 @@ namespace EE::Render
             stencilTextureParameters.m_initialState = RHI::TextureState::DepthWrite;
             stencilTextureParameters.m_debugName.sprintf( "SMAA Stencil Target %dx%d", textureWidth, textureHeight );
 
-            pRenderViewport->m_SMAA_StencilTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), stencilTextureParameters );
+            pRenderViewport->m_SMAA_stencilTexture = RHI::CreateTexture( pRenderSystem->GetContextRHI(), stencilTextureParameters );
         }
     }
 
@@ -135,23 +135,23 @@ namespace EE::Render
 
         {
             EE_ASSERT( !resourceStates.HasPendingBarriers() );
-            resourceStates.Writeable( pRenderViewport->m_SMAA_EdgesTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
-            resourceStates.Writeable( pRenderViewport->m_SMAA_StencilTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
+            resourceStates.Writeable( pRenderViewport->m_SMAA_edgesTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+            resourceStates.Writeable( pRenderViewport->m_SMAA_stencilTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthWrite, RHI::TextureState::DepthWrite );
             resourceStates.FlushBarriers( pCommandBuffer );
 
             RHI::LoadAction edgeDetectionLoadAction = {};
             edgeDetectionLoadAction.m_loadActionsColor[0] = RHI::LoadActionType::Clear;
-            edgeDetectionLoadAction.m_colorClearValues[0] = pRenderViewport->m_SMAA_EdgesTexture->m_clearValue;
+            edgeDetectionLoadAction.m_colorClearValues[0] = pRenderViewport->m_SMAA_edgesTexture->m_clearValue;
 
             edgeDetectionLoadAction.m_loadActionStencil = RHI::LoadActionType::Clear;
-            edgeDetectionLoadAction.m_depthClearValue = pRenderViewport->m_SMAA_StencilTexture->m_clearValue;
+            edgeDetectionLoadAction.m_depthClearValue = pRenderViewport->m_SMAA_stencilTexture->m_clearValue;
 
-            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_SMAA_EdgesTexture.m_pTexture, 1 }, pRenderViewport->m_SMAA_StencilTexture, &edgeDetectionLoadAction );
+            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_SMAA_edgesTexture.m_pTexture, 1 }, pRenderViewport->m_SMAA_stencilTexture, &edgeDetectionLoadAction );
 
             ShaderTypes::SMAAEdgeDetectionResourceTableData edgeDetectionRootConstants = {};
 
             EE_ASSERT( !resourceStates.HasPendingBarriers() );
-            edgeDetectionRootConstants.SetColorTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_ForwardShading_ColorTexture );
+            edgeDetectionRootConstants.SetColorTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_forwardShading_colorTexture );
             resourceStates.FlushBarriers( pCommandBuffer );
 
             edgeDetectionRootConstants.m_rtMetrics[0] = 1.0F / viewportSize.m_x;
@@ -167,22 +167,22 @@ namespace EE::Render
 
         {
             EE_ASSERT( !resourceStates.HasPendingBarriers() );
-            resourceStates.ReadOnly( pRenderViewport->m_SMAA_StencilTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthRead, RHI::TextureState::DepthRead );
-            resourceStates.Writeable( pRenderViewport->m_SMAA_BlendTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+            resourceStates.ReadOnly( pRenderViewport->m_SMAA_stencilTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::DepthRead, RHI::TextureState::DepthRead );
+            resourceStates.Writeable( pRenderViewport->m_SMAA_blendTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
             resourceStates.FlushBarriers( pCommandBuffer );
 
             RHI::LoadAction blendingWeightCalculationLoadAction = {};
             blendingWeightCalculationLoadAction.m_loadActionsColor[0] = RHI::LoadActionType::Clear;
-            blendingWeightCalculationLoadAction.m_colorClearValues[0] = pRenderViewport->m_SMAA_BlendTexture->m_clearValue;
+            blendingWeightCalculationLoadAction.m_colorClearValues[0] = pRenderViewport->m_SMAA_blendTexture->m_clearValue;
 
             blendingWeightCalculationLoadAction.m_loadActionStencil = RHI::LoadActionType::Load;
 
-            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_SMAA_BlendTexture.m_pTexture, 1 }, pRenderViewport->m_SMAA_StencilTexture, &blendingWeightCalculationLoadAction );
+            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_SMAA_blendTexture.m_pTexture, 1 }, pRenderViewport->m_SMAA_stencilTexture, &blendingWeightCalculationLoadAction );
 
             EE_ASSERT( !resourceStates.HasPendingBarriers() );
 
             ShaderTypes::SMAABlendingWeightCalculationResourceTableData blendingWeightCalculationRootConstants = {};
-            blendingWeightCalculationRootConstants.SetEdgesTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_SMAA_EdgesTexture );
+            blendingWeightCalculationRootConstants.SetEdgesTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_SMAA_edgesTexture );
             blendingWeightCalculationRootConstants.SetAreaTexture( pSMAAAreaTexture );
             blendingWeightCalculationRootConstants.SetSearchTexture( pSMAASearchTexture );
             resourceStates.FlushBarriers( pCommandBuffer );
@@ -200,20 +200,20 @@ namespace EE::Render
 
         {
             EE_ASSERT( !resourceStates.HasPendingBarriers() );
-            resourceStates.Writeable( pRenderViewport->m_SMAA_ResultTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
+            resourceStates.Writeable( pRenderViewport->m_SMAA_resultTexture, RHI::PipelineStage::Draw, RHI::ResourceAccess::RenderTarget, RHI::TextureState::RenderTarget );
             resourceStates.FlushBarriers( pCommandBuffer );
 
             RHI::LoadAction neighborhoodBlendingLoadAction = {};
             neighborhoodBlendingLoadAction.m_loadActionsColor[0] = RHI::LoadActionType::Clear;
-            neighborhoodBlendingLoadAction.m_colorClearValues[0] = pRenderViewport->m_SMAA_ResultTexture->m_clearValue;
+            neighborhoodBlendingLoadAction.m_colorClearValues[0] = pRenderViewport->m_SMAA_resultTexture->m_clearValue;
 
-            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_SMAA_ResultTexture.m_pTexture, 1 }, nullptr, &neighborhoodBlendingLoadAction );
+            RHI::CmdSetRenderTargets( pCommandBuffer, { &pRenderViewport->m_SMAA_resultTexture.m_pTexture, 1 }, nullptr, &neighborhoodBlendingLoadAction );
 
             EE_ASSERT( !resourceStates.HasPendingBarriers() );
 
             ShaderTypes::SMAANeighborhoodBlendingResourceTableData neighborhoodBlendingRootConstants = {};
-            neighborhoodBlendingRootConstants.SetColorTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_ForwardShading_ColorTexture );
-            neighborhoodBlendingRootConstants.SetBlendTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_SMAA_BlendTexture );
+            neighborhoodBlendingRootConstants.SetColorTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_forwardShading_colorTexture );
+            neighborhoodBlendingRootConstants.SetBlendTexture( resourceStates, RHI::PipelineStage::PixelShader, pRenderViewport->m_SMAA_blendTexture );
             resourceStates.FlushBarriers( pCommandBuffer );
 
             neighborhoodBlendingRootConstants.m_rtMetrics[0] = 1.0F / viewportSize.m_x;

@@ -1,0 +1,58 @@
+#include "Engine/Render/Shaders/Renderer/RendererTypes.esh"
+#include "Engine/Render/Shaders/Renderer/RendererSurfaceShaderLayout.esh"
+#include "Engine/Render/Shaders/EngineShader.esh"
+#include "Engine/Render/Shaders/MeshInstance.esh"
+
+ESF_PARAMETER string ShaderType = "Compute";
+
+EE_DECLARE_ROOT_CONSTANTS( CullingArgumentGenerationRootConstants, b0, space0 );
+EE_DECLARE_ROOT_CBV( GlobalParameters, b1, space0 );
+
+[RootSignature( CullingArgumentGenerationRootSignature )]
+[numthreads( 64, 1, 1 )]
+void CS_main( uint groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID, uint3 dispatchThreadID : SV_DispatchThreadID )
+{
+    const uint argumentIndex = groupID * 64 + groupThreadID;
+    if ( argumentIndex >= RootConstants.m_numArguments )
+    {
+        return;
+    }
+
+    Buffer<uint>                                workCounterBuffer               = GetBuffer( RootConstants.m_workCounterBuffer );
+    RWStructuredBuffer<ClusterCullingArgument>  cullingArgumentBuffer           = GetRWBuffer( RootConstants.m_cullingArgumentBuffer );
+    RWStructuredBuffer<DrawCompactionArgument>  drawCompactionArgumentBuffer    = GetRWBuffer( RootConstants.m_drawCompactionArgumentBuffer );
+
+    uint const numWorkEntriesTotal = workCounterBuffer[0];
+    uint const numWorkEntriesPerArgument = RHI_MAX_DISPATCH_SIZE * 128;
+
+    uint const workBufferOffset = argumentIndex * numWorkEntriesPerArgument;
+    uint const remainingWorkEntries = numWorkEntriesTotal > workBufferOffset ? numWorkEntriesTotal - workBufferOffset : 0;
+    uint const numGroups = min( ( remainingWorkEntries + 127 ) / 128, RHI_MAX_DISPATCH_SIZE );
+
+    ClusterCullingArgument cullingArgument = ( ClusterCullingArgument )0;
+
+    cullingArgument.m_rootConstants.m_instanceBuffer            = RootConstants.m_instanceBuffer;
+    cullingArgument.m_rootConstants.m_instanceVisibilityBuffer  = RootConstants.m_instanceVisibilityBuffer;
+    cullingArgument.m_rootConstants.m_clusterToInstanceBuffer   = RootConstants.m_clusterToInstanceBuffer;
+    cullingArgument.m_rootConstants.m_cullingWorkBuffer         = RootConstants.m_cullingWorkBuffer;
+    cullingArgument.m_rootConstants.m_drawClusterCountersBuffer = RootConstants.m_drawClusterCountersBuffer;
+    cullingArgument.m_rootConstants.m_workBufferOffset          = workBufferOffset;
+    cullingArgument.m_rootConstants.m_numWorkEntries            = numWorkEntriesTotal;
+    cullingArgument.m_rootCBV                                   = RootCBV.m_deviceAddress;
+    cullingArgument.m_dispatchArguments                         = uint3( numGroups, 1, 1 );
+    cullingArgumentBuffer[argumentIndex] = cullingArgument;
+
+    DrawCompactionArgument drawCompactionArgument = ( DrawCompactionArgument )0;
+
+    drawCompactionArgument.m_rootConstants.m_clusterToInstanceBuffer            = RootConstants.m_clusterToInstanceBuffer;
+    drawCompactionArgument.m_rootConstants.m_cullingWorkBuffer                  = RootConstants.m_cullingWorkBuffer;
+    drawCompactionArgument.m_rootConstants.m_instanceBuffer                     = RootConstants.m_instanceBuffer;
+    drawCompactionArgument.m_rootConstants.m_drawClusterBuffer                  = RootConstants.m_drawClusterBuffer;
+    drawCompactionArgument.m_rootConstants.m_drawClusterBaseOffsetsBuffer       = RootConstants.m_drawClusterBaseOffsetsBuffer;
+    drawCompactionArgument.m_rootConstants.m_drawClusterScatterOffsetsBuffer    = RootConstants.m_drawClusterScatterOffsetsBuffer;
+    drawCompactionArgument.m_rootConstants.m_workBufferOffset                   = workBufferOffset;
+    drawCompactionArgument.m_rootConstants.m_numWorkEntries                     = numWorkEntriesTotal;
+    drawCompactionArgument.m_rootCBV                                            = RootCBV.m_deviceAddress;
+    drawCompactionArgument.m_dispatchArguments                                  = uint3( numGroups, 1, 1 );
+    drawCompactionArgumentBuffer[argumentIndex] = drawCompactionArgument;
+}

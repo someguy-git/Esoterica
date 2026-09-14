@@ -16,10 +16,12 @@ namespace EE::Animation
 
     void GraphResourceDescriptor::GetInstallDependencies( TypeSystem::TypeRegistry const& typeRegistry, FileSystem::Path const& sourceResourceDirectoryPath, String const& subResourceName, TVector<ResourceID>& outDependencies ) const
     {
-        StringID const variationID = subResourceName.empty() ? Variation::s_defaultVariationID : StringID( StringUtils::StripExtension( subResourceName ) );
-        if ( !m_graphDefinition.IsValidVariation( variationID ) )
+        auto const& variationHierarachy = m_graphDefinition.GetVariationHierarchy();
+
+        StringID variationID = Variation::s_defaultVariationID;
+        if ( !subResourceName.empty() )
         {
-            return;
+            variationID = variationHierarachy.TryGetCaseCorrectVariationID( StringUtils::StripExtension( subResourceName ) );
         }
 
         //-------------------------------------------------------------------------

@@ -16,7 +16,7 @@
 
 namespace EE::Resource
 {
-    class PackagingTask;
+    class PublishingTask;
     class CompilerRegistry;
 
     //-------------------------------------------------------------------------
@@ -44,11 +44,11 @@ namespace EE::Resource
             String                                  m_sourceID;
         };
 
-        enum class PackagingStage
+        enum class PublishingStage
         {
-            None, // Not Packaging
+            None, // Not Publishing
             Preparing,
-            Packaging,
+            Publishing,
             Complete
         };
 
@@ -88,38 +88,38 @@ namespace EE::Resource
         TVector<Request const*> const& GetRequests() const { return ( TVector<Request const*>& ) m_requests; }
         inline void CleanHistory() { m_cleanupRequested = true; }
 
-        // Packaging
+        // Publishing
         //-------------------------------------------------------------------------
 
-        // Refresh the list of available maps to package
+        // Refresh the list of available maps to publish
         void RefreshAvailableMapList();
 
         // Get list of maps in the raw source folder
         TVector<ResourceID> const& GetAllFoundMaps() { return m_allMaps; }
 
-        // Get the current list of maps queued to be packaged
-        TVector<ResourceID> const& GetMapsQueuedForPackaging() const { return m_mapsToBePackaged; }
+        // Get the current list of maps queued to be published
+        TVector<ResourceID> const& GetMapsQueuedForPublishing() const { return m_mapsToBePublished; }
 
-        // Are we currently packaging a map
-        inline bool IsPackaging() const { return m_packagingStage != PackagingStage::None && m_packagingStage != PackagingStage::Complete; }
+        // Are we currently publishing a map
+        inline bool IsPublishing() const { return m_publishingStage != PublishingStage::None && m_publishingStage != PublishingStage::Complete; }
 
-        // Get the current stage of packaging
-        PackagingStage GetPackagingStage() const { return m_packagingStage; }
+        // Get the current stage of publishing
+        PublishingStage GetPublishingStage() const { return m_publishingStage; }
 
-        // How far are we along with the packaging process
-        float GetPackagingProgress() const;
+        // How far are we along with the publishing process
+        float GetPublishingProgress() const;
 
-        // Add map to the to-be-packaged list
-        void AddMapToPackagingList( ResourceID mapResourceID );
+        // Add map to the to-be-published list
+        void AddMapToPublishingList( ResourceID mapResourceID );
 
-        // Remove map from the to-be-packaged list
-        void RemoveMapFromPackagingList( ResourceID mapResourceID );
+        // Remove map from the to-be-published list
+        void RemoveMapFromPublishingList( ResourceID mapResourceID );
 
-        // Do we have any maps on the to-be-packaged list
-        bool CanStartPackaging() const;
+        // Do we have any maps on the to-be-published list
+        bool CanStartPublishing() const;
 
-        // Start the packaging process
-        void StartPackaging();
+        // Start the publishing process
+        void StartPublishing();
 
         // Recompilation Blocking
         //-------------------------------------------------------------------------
@@ -176,12 +176,12 @@ namespace EE::Resource
         bool IsResourceRecompilationBlocked( ResourceID const& ID ) const;
         void UpdateRecompilationBlockers();
 
-        // Packaging
+        // Publishing
         //-------------------------------------------------------------------------
 
-        void UpdatePackaging();
-        void RunPackagingTask();
-        void EnqueueResourceForPackaging( ResourceID const& resourceID );
+        void UpdatePublishing();
+        void RunPublishingTask();
+        void EnqueueResourceForPublishing( ResourceID const& resourceID );
 
         // Tools
         //-------------------------------------------------------------------------
@@ -203,13 +203,13 @@ namespace EE::Resource
         // Workers
         TVector<ResourceServerWorker>                               m_workers;
 
-        // Packaging
+        // Publishing
         TVector<ResourceID>                                         m_allMaps;
-        TVector<ResourceID>                                         m_mapsToBePackaged;
-        TVector<Request const*>                                     m_packagingRequests;
-        TVector<ResourceID>                                         m_packagingRuntimeDependencies;
-        PinnedLambdaTask                                            m_packagingTask = PinnedLambdaTask( 1, [this] () { RunPackagingTask(); } );
-        PackagingStage                                              m_packagingStage = PackagingStage::None;
+        TVector<ResourceID>                                         m_mapsToBePublished;
+        TVector<Request const*>                                     m_publishingRequests;
+        TVector<ResourceID>                                         m_publishingRuntimeDependencies;
+        PinnedLambdaTask                                            m_publishingTask = PinnedLambdaTask( 1, [this] () { RunPublishingTask(); } );
+        PublishingStage                                             m_publishingStage = PublishingStage::None;
 
         // File System Watcher
         FileSystem::Watcher                                         m_fileSystemWatcher;

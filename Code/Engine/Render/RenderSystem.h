@@ -90,7 +90,9 @@ namespace EE::Render
         inline RHI::Sampler* GetPointWrapSampler() const { return m_commonSamplers[COMMON_SAMPLER_POINT_WRAP]; }
         inline RHI::Sampler* GetLinearWrapSampler() const { return m_commonSamplers[COMMON_SAMPLER_LINEAR_WRAP]; }
         inline RHI::Sampler* GetPointClampSampler() const { return m_commonSamplers[COMMON_SAMPLER_POINT_CLAMP]; }
+        inline RHI::Sampler* GetLinearClampSampler() const { return m_commonSamplers[COMMON_SAMPLER_LINEAR_CLAMP]; }
         inline RHI::Sampler* GetLinearClampMaxSampler() const { return m_commonSamplers[COMMON_SAMPLER_LINEAR_CLAMP_MAX]; }
+        inline RHI::Sampler* GetLinearClampMinSampler() const { return m_commonSamplers[COMMON_SAMPLER_LINEAR_CLAMP_MIN]; }
 
         inline void SetTonemapLUT( RHI::Texture* pTonemapLUT ) { m_pTonemapLUT = pTonemapLUT; }
         inline RHI::Texture* GetTonemapLUT() const { return m_pTonemapLUT; }
@@ -144,14 +146,6 @@ namespace EE::Render
         // Meshes
         //-------------------------------------------------------------------------
 
-        MeshUpdate CreateMesh( size_t numMeshes, size_t numClustersForAllMeshes );
-        void WriteCommonMeshData( MeshUpdate const& meshUpdate, size_t dstMesh, size_t dstCluster, Geometry const& meshData ) const;
-        void DeleteMesh( MeshHandle&& meshHandle, ClustersHandle&& clustersHandle );
-        void QueueMeshUpdate( MeshHandle const& handle, ClustersHandle const& clustersHandle );
-
-        RHI::BufferHandle GetMeshBufferHandle() const;
-        RHI::BufferHandle GetClusterBufferHandle() const;
-
         // Shaders
         //-------------------------------------------------------------------------
 
@@ -189,7 +183,6 @@ namespace EE::Render
 
         AsyncBufferUpdate* CreateBufferAsync( RHI::BufferParameters const& bufferParameters );
         AsyncTextureUpdate* CreateTextureAsync( RHI::TextureParameters const& textureParameters );
-        AsyncMeshUpdate* CreateMeshAsync( size_t numMeshes, size_t numClustersForAllMeshes );
         AsyncMaterialParametersUpdate* CreateMaterialParametersAsync( size_t shaderIndex );
         AsyncShaderDataUpdate* CreateShaderDataAsync( uint32_t shaderDataSizeInBytes );
 
@@ -238,7 +231,6 @@ namespace EE::Render
 
         TVector<AsyncBufferUpdate*>                                             m_asyncBufferUpdateQueue = {};
         TVector<AsyncTextureUpdate*>                                            m_asyncTextureUpdateQueue = {};
-        TVector<AsyncMeshUpdate*>                                               m_asyncMeshUpdateQueue = {};
         TVector<AsyncShaderDataUpdate*>                                         m_asyncShaderDataUpdateQueue = {};
         TVector<AsyncMaterialParametersUpdate*>                                 m_asyncMaterialParametersUpdateQueue = {};
 
@@ -248,12 +240,11 @@ namespace EE::Render
         TVector<TPair<RHI::Buffer*, int32_t>>                                   m_resourceDeleteQueue_Buffer = {};
         TVector<TPair<RHI::Texture*, int32_t>>                                  m_resourceDeleteQueue_Texture = {};
         TVector<TPair<RHI::BufferSubAllocation, int32_t>>                       m_resourceDeleteQueue_StagingAllocation = {};
-        TVector<TPair<TPair<MeshHandle, ClustersHandle>, int32_t>>              m_resourceDeleteQueue_Mesh = {};
         TVector<TPair<ShaderDataHandle, int32_t>>                               m_resourceDeleteQueue_ShaderData = {};
         TVector<TPair<MaterialShaderParametersInstance, int32_t>>               m_resourceDeleteQueue_MaterialParametersInstance = {};
 
         // Commonly used samplers
-        TArray<RHI::Sampler*, 6>                                                m_commonSamplers = {};
+        TArray<RHI::Sampler*, 7>                                                m_commonSamplers = {};
 
         // Shaders
         TVector<MaterialShader>                                                 m_materialShaders;
@@ -263,13 +254,6 @@ namespace EE::Render
         // Shader data
         PageAllocator<Buffer32ByteBlock, uint32_t>                              m_shaderDataAllocator;
         RHI::Buffer*                                                            m_pShaderDataBuffer = nullptr;
-
-        // Meshes
-        PageAllocator<ShaderTypes::Mesh, uint16_t>                              m_meshAllocator;
-        RHI::Buffer*                                                            m_pMeshBuffer = nullptr;
-
-        PageAllocator<ShaderTypes::MeshCluster, uint32_t>                       m_meshClusterAllocator;
-        RHI::Buffer*                                                            m_pMeshClusterBuffer = nullptr;
 
         // Render windows
         TVector<Window*>                                                        m_registeredRenderWindows;
@@ -303,7 +287,6 @@ namespace EE::Render
 
                 static_assert( eastl::is_same_v<ResourceType, RHI::Buffer*> || eastl::is_same_v<ResourceType, RHI::Texture*> ||
                                eastl::is_same_v<ResourceType, DeviceTextureState> ||
-                               eastl::is_same_v<ResourceType, TPair<MeshHandle, ClustersHandle>> ||
                                eastl::is_same_v<ResourceType, ShaderDataHandle> || eastl::is_same_v<ResourceType, MaterialShaderParametersInstance>,
                                "Unsupported resource type" );
 
@@ -314,10 +297,6 @@ namespace EE::Render
                 else if constexpr ( eastl::is_same_v<ResourceType, RHI::Texture*> || eastl::is_same_v<ResourceType, DeviceTextureState> )
                 {
                     m_resourceDeleteQueue_Texture.emplace_back( eastl::forward<decltype( resource )>( resource ), RHI::MaxPendingFrames );
-                }
-                else if constexpr ( eastl::is_same_v<ResourceType, TPair<MeshHandle, ClustersHandle>> )
-                {
-                    m_resourceDeleteQueue_Mesh.emplace_back( eastl::forward<decltype( resource )>( resource ), RHI::MaxPendingFrames );
                 }
                 else if constexpr ( eastl::is_same_v<ResourceType, ShaderDataHandle> )
                 {

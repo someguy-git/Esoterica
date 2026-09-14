@@ -24,7 +24,6 @@ namespace EE::Animation
     class ReferencedGraphNode;
     class GraphRecording;
     class RecordedGraphState;
-    struct ExternalPoseData;
     struct RecordedGraphUpdateData;
     enum class TaskSystemDebugMode;
 
@@ -335,19 +334,13 @@ namespace EE::Animation
         // Is the specified external pose slot node active
         inline bool IsExternalPoseSlotNodeActive( StringID slotID ) const { return IsNodeActive( GetExternalPoseNodeIndex( slotID ) ); }
 
-        // Is the specified external pose slot node filled
-        bool IsExternalPoseSet( StringID slotID ) const;
+        // Sets a supplied external pose to the specified slot. Note, it is the callers responsibility to ensure that the slot ID is valid!
+        bool SetExternalPose( StringID slotID, Pose const &primaryPose, TVector<Pose const*> const& secondaryPoses, Transform const& rootMotionDelta, StringID boneMaskID );
 
-        // Gets the current state of an external pose node, returns false if the slot is not filled. Note, it is the callers responsibility to ensure that the slot ID is valid!
-        bool GetExternalPoseState( StringID slotID, ExternalPoseData& outState );
-
-        // Connects a supplied external pose to the specified slot. Note, it is the callers responsibility to ensure that the slot ID is valid!
-        bool SetExternalPose( StringID slotID, ExternalPoseData const& poseData );
-
-        // Disconnects an external pose, will destroy the created instance
+        // Clear an external pose, will destroy the created instance
         void ClearExternalPose( StringID slotID );
 
-        // Disconnects all external poses
+        // Clears all external poses
         void ClearAllExternalPoses();
 
         // Recording

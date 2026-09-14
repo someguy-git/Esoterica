@@ -17,13 +17,80 @@ namespace EE
 
 namespace EE::Render
 {
+    struct EE_ENGINE_API MeshStatistics final
+    {
+        EE_SERIALIZE
+        (
+            m_numVertices, m_numTriangles, m_numClusters,
+            m_compressedSizeBytes, m_uncompressedSizeBytes, m_compressionRatio,
+            m_averagePositionBitsPerAxisX, m_averagePositionBitsPerAxisY, m_averagePositionBitsPerAxisZ,
+            m_minimumPositionBitsPerAxisX, m_minimumPositionBitsPerAxisY, m_minimumPositionBitsPerAxisZ,
+            m_medianPositionBitsPerAxisX, m_medianPositionBitsPerAxisY, m_medianPositionBitsPerAxisZ,
+            m_maximumPositionBitsPerAxisX, m_maximumPositionBitsPerAxisY, m_maximumPositionBitsPerAxisZ,
+            m_minimumPositionBitsPerVertex, m_averagePositionBitsPerVertex, m_maximumPositionBitsPerVertex,
+            m_minimumClusterUtilization, m_maximumClusterUtilization, m_averageClusterUtilization, m_medianClusterUtilization,
+            m_clusterVertexOverhead, m_vertexTriangleReuse,
+            m_minimumCompressionAccuracy, m_averageCompressionAccuracy
+        );
+
+        uint32_t                        m_numVertices = 0;
+        uint32_t                        m_numTriangles = 0;
+        uint32_t                        m_numClusters = 0;
+
+        uint64_t                        m_compressedSizeBytes = 0;
+        uint64_t                        m_uncompressedSizeBytes = 0;
+        float                           m_compressionRatio = 0.0F;
+
+        float                           m_averagePositionBitsPerAxisX = 0.0F;
+        float                           m_averagePositionBitsPerAxisY = 0.0F;
+        float                           m_averagePositionBitsPerAxisZ = 0.0F;
+
+        uint32_t                        m_minimumPositionBitsPerAxisX = 0;
+        uint32_t                        m_minimumPositionBitsPerAxisY = 0;
+        uint32_t                        m_minimumPositionBitsPerAxisZ = 0;
+
+        float                           m_medianPositionBitsPerAxisX = 0.0F;
+        float                           m_medianPositionBitsPerAxisY = 0.0F;
+        float                           m_medianPositionBitsPerAxisZ = 0.0F;
+
+        uint32_t                        m_maximumPositionBitsPerAxisX = 0;
+        uint32_t                        m_maximumPositionBitsPerAxisY = 0;
+        uint32_t                        m_maximumPositionBitsPerAxisZ = 0;
+
+        uint32_t                        m_minimumPositionBitsPerVertex = 0;
+        float                           m_averagePositionBitsPerVertex = 0.0F;
+        uint32_t                        m_maximumPositionBitsPerVertex = 0;
+
+        float                           m_minimumClusterUtilization = 0.0F;
+        float                           m_maximumClusterUtilization = 0.0F;
+        float                           m_averageClusterUtilization = 0.0F;
+        float                           m_medianClusterUtilization = 0.0F;
+
+        float                           m_clusterVertexOverhead = 0.0F;
+        float                           m_vertexTriangleReuse = 0.0F;
+
+        float                           m_minimumCompressionAccuracy = 0.0F;
+        float                           m_averageCompressionAccuracy = 0.0F;
+
+        //-------------------------------------------------------------------------
+
+        void Accumulate( MeshStatistics const& src );
+    };
+
+    //-------------------------------------------------------------------------
+
     class EE_ENGINE_API Mesh : public Resource::IResource
     {
         friend class MeshLoader;
         friend class MeshCompiler;
         friend class RenderSystem;
 
-        EE_SERIALIZE( m_sockets, m_submeshes, m_submeshLocalTransforms, m_geometry, m_geometryLODDistance, m_meshBounds, m_numLODs );
+        EE_SERIALIZE
+        (
+            m_sockets, m_submeshes, m_submeshLocalTransforms,
+            m_geometry, m_geometryLODDistance, m_statisticsPerLOD, m_numLODs,
+            m_meshBounds
+        );
 
     public:
 
@@ -47,7 +114,7 @@ namespace EE::Render
             Transform                   m_offset;
         };
 
-        constexpr static int32_t const s_sharedMeshVersion = 22;
+        constexpr static int32_t const s_sharedMeshVersion = 28;
 
     private:
 
@@ -56,8 +123,7 @@ namespace EE::Render
 
         struct ResourceUpdateState
         {
-            AsyncBufferUpdate*          m_pVertexBufferUpdate = nullptr;
-            AsyncBufferUpdate*          m_pTriangleBufferUpdate = nullptr;
+            AsyncBufferUpdate*          m_pMeshBufferUpdate = nullptr;
         };
 
     public:
@@ -112,16 +178,19 @@ namespace EE::Render
         // Get the distance threshold for the LODs we support
         inline TVector<float> const& GetLODDistances() const { return m_geometryLODDistance; }
 
+        // Get the statistics for a specific LOD
+        inline MeshStatistics const& GetStatistics( uint32_t lodIndex ) const
+        {
+            EE_ASSERT( lodIndex < m_statisticsPerLOD.size() );
+            return m_statisticsPerLOD[lodIndex];
+        }
+
         // Render Data
         //-------------------------------------------------------------------------
 
         inline TVector<Geometry> const& GetGeometry() const { return m_geometry; }
 
-        inline RHI::Buffer* GetClusterVertexBuffer( uint32_t index ) const { return m_clusterVertexBuffers[index]; }
-        inline RHI::Buffer* GetClusterTriangleBuffer( uint32_t index ) const { return m_clusterTriangleBuffers[index]; }
-
-        inline MeshHandle const& GetMeshHandle() const { return m_meshHandle; }
-        inline ClustersHandle const& GetClustersHandle() const { return m_clustersHandle; }
+        inline RHI::Buffer* GetMeshBuffer( uint32_t index ) const { return m_meshBuffers[index]; }
 
     protected:
 
@@ -134,11 +203,7 @@ namespace EE::Render
         // Internal renderer data
         //-------------------------------------------------------------------------
 
-        TVector<RHI::Buffer*>               m_clusterVertexBuffers;
-        TVector<RHI::Buffer*>               m_clusterTriangleBuffers;
-
-        MeshHandle                          m_meshHandle;
-        ClustersHandle                      m_clustersHandle;
+        TVector<RHI::Buffer*>               m_meshBuffers;
 
         // Serialized submesh data
         //-------------------------------------------------------------------------
@@ -148,12 +213,12 @@ namespace EE::Render
 
         TVector<Geometry>                   m_geometry;
         TVector<float>                      m_geometryLODDistance;
+        TVector<MeshStatistics>             m_statisticsPerLOD;
         uint32_t                            m_numLODs;
 
     private:
 
-        TVector<ResourceUpdateState>        m_clusterBuffersState;
-        AsyncMeshUpdate*                    m_pMeshUpdate = nullptr;
+        TVector<ResourceUpdateState>        m_meshBuffersState;
     };
 
     //-------------------------------------------------------------------------

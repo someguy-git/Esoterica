@@ -26,6 +26,13 @@ namespace EE::EntityModel
         {
             m_pViewportDropHandlers.emplace_back( pHandlerTypeInfo->GetDefaultInstance<ViewportResourceDropHandler>() );
         }
+
+        m_selectionChangedEventID = m_editorContext.OnSelectionChanged().Bind( [this] () { OnSelectionChanged(); } );
+    }
+
+    EntityCollectionEditor::~EntityCollectionEditor()
+    {
+        m_editorContext.OnSelectionChanged().Unbind( m_selectionChangedEventID );
     }
 
     void EntityCollectionEditor::Initialize( UpdateContext const& context )
@@ -147,31 +154,6 @@ namespace EE::EntityModel
         if ( m_drawGrid )
         {
             DrawGrid();
-        }
-
-        auto drawingCtx = GetDebugDrawContext();
-
-        // Draw selection bounds
-        //-------------------------------------------------------------------------
-
-        if ( m_editorContext.HasSpatialSelection() )
-        {
-            drawingCtx.DrawWireBox( m_editorContext.GetSpatialSelectionCombinedBounds(), Colors::Yellow, 3.0f, DebugDrawLayer::World );
-
-            if ( m_editorContext.GetSpatialSelectionBounds().size() > 1 )
-            {
-                for ( OBB const& bounds : m_editorContext.GetSpatialSelectionBounds() )
-                {
-                    drawingCtx.DrawWireBox( bounds, Colors::Cyan, 1.0f, DebugDrawLayer::World );
-                }
-            }
-
-            TInlineVector<Transform, 10> transforms;
-            m_editorContext.GetSpatialSelectionWorldTransforms( transforms );
-            for ( Transform const& transform : transforms )
-            {
-                drawingCtx.DrawAxis( transform, 0.25f );
-            }
         }
     }
 
@@ -337,6 +319,38 @@ namespace EE::EntityModel
         else // No modifier so just set selection
         {
             m_editorContext.SetSelection( pEntity );
+        }
+    }
+
+    void EntityCollectionEditor::OnSelectionChanged()
+    {
+        if ( m_editorContext.HasSpatialSelection() )
+        {
+            TInlineVector<SpatialEntityComponent const*, 100> selectedComponents;
+
+            for ( auto const& selectedItem : m_editorContext.GetSpatialSelection() )
+            {
+                if ( selectedItem.IsSpatialComponent() )
+                {
+                    selectedComponents.emplace_back( selectedItem.GetSpatialComponent() );
+                }
+                else if ( selectedItem.IsEntity() )
+                {
+                    for ( auto pComponent : selectedItem.m_pEntity->GetComponents() )
+                    {
+                        if ( auto pSpatialComponent = TryCast<SpatialEntityComponent>( pComponent ) )
+                        {
+                            selectedComponents.emplace_back( pSpatialComponent );
+                        }
+                    }
+                }
+            }
+
+            SetViewportOutlinedObjects( selectedComponents );
+        }
+        else
+        {
+            ClearViewportOutlinedObjects();
         }
     }
 }
